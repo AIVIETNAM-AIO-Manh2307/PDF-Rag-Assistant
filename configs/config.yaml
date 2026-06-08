@@ -1,0 +1,8 @@
+model:
+  llm: "vicuna:7b-v1.5-q5_1"
+  embedding: "bge-m3"
+  temperature: 0
+
+data:
+  chunk_size: 1000
+  chunk_overlap: 200
