@@ -16,9 +16,6 @@ def chunk_text(text: str, size: int = 1000, overlap: int = 200) -> list:
     """
     Cắt text thành các đoạn nhỏ (chunks) dựa trên số ký tự và độ trùng lặp.
     """
-
-
-
     
     paras = [p.strip() for p in text.split("\n") if p.strip()]
     chunks, cur = [], ""

@@ -1,5 +1,4 @@
 import ollama
-from src.pipeline.rag_pipeline import RAGPipeline 
 
 PROMPT_TEMPLATE = """Bạn là một trợ lý hỏi đáp tài liệu học tập thông minh và trung thực.
 Hãy sử dụng các đoạn ngữ cảnh (Context) được cung cấp dưới đây để trả lời câu hỏi (Question).
@@ -35,7 +34,7 @@ def get_embedding(texts: list, model_name: str = "bge-m3") -> list:
     for text in texts:
         respone =  ollama.embeddings(
             model = model_name,
-            promt = text
+            prompt = text
         )
         embeddings.append(respone["embedding"])
     
@@ -45,9 +44,6 @@ def generate_answer(question: str, context: str, model_name: str = "vicuna:7b-v1
     """
     Gửi prompt chứa ngữ cảnh và câu hỏi đến LLM để nhận câu trả lời.
     """
-    
-    rag = RAGPipeline()
-    context = "\n---\n".join(rag.retrieve(question))
     
     formatted_prompt = PROMPT_TEMPLATE.format(context=context, question=question)
     resp = ollama.chat(
