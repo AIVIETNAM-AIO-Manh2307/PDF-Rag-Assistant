@@ -1,242 +1,217 @@
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+"""
+=============================================================================
+FILE  : main.py  (Streamlit Frontend — Version 2)
+TASK  : 4.2 Tái cấu trúc Streamlit — chỉ gọi API, không có logic xử lý
+        4.3 Nâng cấp giao diện (Workspace sidebar, Citations highlight)
+=============================================================================
+
+Nguyên tắc:
+  - File này KHÔNG import trực tiếp bất kỳ module data/model/pipeline nào.
+  - Mọi tác vụ đều thông qua requests đến http://localhost:8000
+  - Streamlit chỉ làm: Nhận input → Gọi API → Hiển thị kết quả
+
+Chạy:
+  # Terminal 1: Start FastAPI backend
+  uvicorn src.api.api_server:app --reload --port 8000
+
+  # Terminal 2: Start Streamlit frontend
+  streamlit run src/app/main.py
+"""
 
 import streamlit as st
-import tempfile
-import time
-import pypdf
-from src.data.pdf_processor import extract_text_from_pdf, chunk_text
-from src.pipeline.rag_pipeline import RAGPipeline
-from src.models.llm_manager import generate_answer
-from src.app.state import init_state, reset_state
-from src.app.ui_components import (
-    clean_html,
-    render_header,
-    render_empty_state,
-    render_processing_state,
-    render_doc_info_card,
-    render_file_selected_state
-)
+import requests
+import os
 
 # ============================================================
-# CẤU HÌNH TRANG & NẠP CSS
+# CONFIG
 # ============================================================
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
 st.set_page_config(
     page_title="PDF RAG Chatbot Assistant",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Nạp file CSS tùy chỉnh
+# Nạp CSS
 css_path = os.path.join(os.path.dirname(__file__), "styles.css")
 if os.path.exists(css_path):
     with open(css_path, "r", encoding="utf-8") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Khởi tạo Session State
+
+# ============================================================
+# HELPER FUNCTIONS — Gọi API 
+# ============================================================
+
+def api_get_workspaces():
+    """GET /api/workspaces → List[{name, file_count}]"""
+    # TODO (Mạnh): Implement
+    # try:
+    #     r = requests.get(f"{API_BASE_URL}/api/workspaces")
+    #     r.raise_for_status()
+    #     return r.json()
+    # except Exception as e:
+    #     st.error(f"Không thể kết nối API: {e}")
+    #     return []
+    return []   # placeholder
+
+
+def api_create_workspace(name: str) -> bool:
+    """POST /api/workspaces → bool (success)"""
+    # TODO (Mạnh): Implement
+    return False  # placeholder
+
+
+def api_upload_pdf(file_bytes: bytes, file_name: str, workspace_name: str) -> dict:
+    """POST /api/upload → {file_name, workspace_name, chunk_count, page_count, status}"""
+    # TODO (Mạnh): Implement
+    return {}  # placeholder
+
+
+def api_chat(question: str, workspace_name: str, top_k: int = 5) -> dict:
+    """POST /api/chat → {answer, citations, model}"""
+    # TODO (Mạnh): Implement
+    return {"answer": "API chưa được implement", "citations": [], "model": ""}
+
+
+def api_summarize(workspace_name: str, file_name: str = None) -> dict:
+    """POST /api/summarize → {summary, model}"""
+    # TODO (Mạnh): Implement
+    return {}  # placeholder
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+def init_state():
+    st.session_state.setdefault("selected_workspace", None)
+    st.session_state.setdefault("chat_history", [])
+    st.session_state.setdefault("app_state", "empty")   # empty | ready | uploading
+
 init_state()
 
-# ============================================================
-# THANH SIDEBAR
-# ============================================================
-with st.sidebar:
-    # Header Logo
-    st.markdown(clean_html("""
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 0 4px;">
-        <div style="width: 38px; height: 38px; border-radius: 8px; background-color: var(--primary-container); display: flex; align-items: center; justify-content: center; color: var(--on-primary); font-size: 18px;">
-            <span class="material-symbols-outlined" style="font-size: 20px; color: white;">description</span>
-        </div>
-        <div>
-            <h1 style="font-size: 16px; font-weight: 600; color: var(--primary); margin: 0; line-height: 1.2;">PDF RAG Assistant</h1>
-            <p style="font-size: 10px; color: var(--on-surface-variant); margin: 0;">Ask questions about your documents</p>
-        </div>
-    </div>
-    """), unsafe_allow_html=True)
-    
-    # Navigation Links (Decorative tabs from design)
-    st.markdown(clean_html("""
-    <nav style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 20px;">
-        <a class="nav-item nav-active" href="#">
-            <span class="material-symbols-outlined" style="font-size: 18px;">description</span>
-            <span>Documents</span>
-        </a>
-        <a class="nav-item" href="#">
-            <span class="material-symbols-outlined" style="font-size: 18px;">history</span>
-            <span>History</span>
-        </a>
-        <a class="nav-item" href="#">
-            <span class="material-symbols-outlined" style="font-size: 18px;">settings</span>
-            <span>Settings</span>
-        </a>
-    </nav>
-    """), unsafe_allow_html=True)
-    
-    st.markdown("<h2 style='font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--on-surface-variant); margin: 0 0 10px 4px;'>Upload Document</h2>", unsafe_allow_html=True)
-    
-    # Upload File PDF
-    if st.session_state.app_state in ["empty", "file_selected"]:
-        uploaded_file = st.file_uploader("Chọn file PDF", type="pdf", label_visibility="collapsed")
-        if uploaded_file:
-            st.session_state.document_name = uploaded_file.name
-            size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-            st.session_state.document_size = f"{size_mb:.1f} MB"
-            st.session_state.file_bytes = uploaded_file.getvalue()
-            st.session_state.app_state = "file_selected"
-        else:
-            st.session_state.app_state = "empty"
-            st.session_state.document_name = None
-            st.session_state.document_size = None
-            st.session_state.file_bytes = None
-            
-    # Hiển thị card thông tin tài liệu hiện hành
-    if st.session_state.document_name:
-        render_doc_info_card(
-            st.session_state.document_name, 
-            st.session_state.document_size,
-            st.session_state.document_pages,
-            st.session_state.document_chunks
-        )
-        
-        # Nút xóa tài liệu
-        st.markdown('<div class="clear-btn" style="margin-top: 10px;">', unsafe_allow_html=True)
-        if st.button("Remove document", key="remove_doc"):
-            reset_state()
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    # Nút bấm "Process Document"
-    if st.session_state.app_state == "file_selected":
-        st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
-        if st.button("Process Document", key="process_doc_btn"):
-            st.session_state.app_state = "processing"
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-    elif st.session_state.app_state == "processing":
-        st.markdown("<div style='margin-top: 10px;'>", unsafe_allow_html=True)
-        st.button("Processing document...", key="process_doc_disabled", disabled=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
-    # Chân trang sidebar
-    st.markdown("<div style='margin-top: auto; padding-top: 16px; border-top: 1px solid var(--outline-variant);'>", unsafe_allow_html=True)
-    st.markdown('<div class="clear-btn">', unsafe_allow_html=True)
-    if st.button("Clear conversation", key="clear_chat"):
+# ============================================================
+# SIDEBAR — Quản lý Workspaces (Task 4.3)
+# ============================================================
+
+with st.sidebar:
+    st.markdown("### 📚 PDF RAG Assistant")
+    st.markdown("---")
+
+    # --- Tạo workspace mới ---
+    st.markdown("**Workspaces**")
+    new_ws_name = st.text_input("Tạo workspace mới", placeholder="vd: Giải Tích")
+    if st.button("➕ Tạo", key="create_ws"):
+        if new_ws_name.strip():
+            # TODO (Mạnh): Gọi api_create_workspace(new_ws_name)
+            st.success(f"Đã tạo workspace: {new_ws_name}")
+        else:
+            st.warning("Vui lòng nhập tên workspace")
+
+    st.markdown("---")
+
+    # --- Chọn workspace ---
+    workspaces = api_get_workspaces()   # [{name, file_count}, ...]
+    ws_names   = [w["name"] for w in workspaces]
+
+    if ws_names:
+        selected = st.selectbox("Chọn Workspace", ws_names, key="ws_select")
+        st.session_state.selected_workspace = selected
+        st.caption(f"{next(w['file_count'] for w in workspaces if w['name']==selected)} file(s)")
+    else:
+        st.info("Chưa có workspace. Tạo một cái mới bên trên.")
+        st.session_state.selected_workspace = None
+
+    st.markdown("---")
+
+    # --- Upload PDF vào workspace đã chọn ---
+    if st.session_state.selected_workspace:
+        st.markdown(f"**Upload PDF vào `{st.session_state.selected_workspace}`**")
+        uploaded_file = st.file_uploader("Chọn file PDF", type="pdf", label_visibility="collapsed")
+
+        if uploaded_file and st.button("⚡ Xử lý tài liệu", key="process_btn"):
+            with st.spinner("Đang xử lý..."):
+                result = api_upload_pdf(
+                    file_bytes     = uploaded_file.getvalue(),
+                    file_name      = uploaded_file.name,
+                    workspace_name = st.session_state.selected_workspace
+                )
+                if result.get("status") == "success":
+                    st.success(f"✅ {result['chunk_count']} chunks từ {result['page_count']} trang")
+                    st.rerun()
+                else:
+                    st.error("Upload thất bại, kiểm tra lại API server.")
+
+    st.markdown("---")
+
+    # --- Nút tiện ích ---
+    if st.button("🗑️ Xóa lịch sử chat", key="clear_chat"):
         st.session_state.chat_history = []
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ============================================================
-# KHU VỰC CHAT CHÍNH
+# MAIN CHAT AREA (Task 4.3)
 # ============================================================
 
-# TRẠNG THÁI 1: CHƯA UPLOAD TÀI LIỆU (EMPTY STATE)
-if st.session_state.app_state == "empty":
-    render_header(app_state="empty")
-    render_empty_state()
-    st.chat_input("Upload a document to enable chat", disabled=True)
+if not st.session_state.selected_workspace:
+    # Empty state
+    st.markdown("## Chào mừng đến PDF RAG Chatbot 👋")
+    st.info("Tạo hoặc chọn một **Workspace** ở thanh bên trái để bắt đầu.")
 
-# TRẠNG THÁI 2: ĐÃ CHỌN TÀI LIỆU, CHỜ PROCESS (FILE SELECTED)
-elif st.session_state.app_state == "file_selected":
-    render_header(st.session_state.document_name, app_state="file_selected")
-    render_file_selected_state(st.session_state.document_name)
-    st.chat_input("Process the document to start asking questions...", disabled=True)
+else:
+    workspace = st.session_state.selected_workspace
+    st.markdown(f"## 💬 Chat — Workspace: `{workspace}`")
 
-# TRẠNG THÁI 3: ĐANG XỬ LÝ TÀI LIỆU (PROCESSING STATE)
-elif st.session_state.app_state == "processing":
-    render_header(st.session_state.document_name, app_state="processing")
-    
-    step_placeholder = st.empty()
-    
-    # Bước 1: Reading PDF
-    with step_placeholder.container():
-        render_processing_state(current_step=1)
-        
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(st.session_state.file_bytes)
-        tmp_path = tmp.name
-        
-    try:
-        reader = pypdf.PdfReader(tmp_path)
-        st.session_state.document_pages = len(reader.pages)
-    except Exception:
-        st.session_state.document_pages = 1
-        
-    raw_text = extract_text_from_pdf(tmp_path)
-    os.unlink(tmp_path)
-    time.sleep(0.5)
-    
-    # Bước 2: Splitting chunks
-    with step_placeholder.container():
-        render_processing_state(current_step=2)
-    chunks = chunk_text(raw_text)
-    st.session_state.document_chunks = len(chunks)
-    time.sleep(0.5)
-    
-    # Bước 3: Creating embeddings
-    with step_placeholder.container():
-        render_processing_state(current_step=3)
-    
-    st.session_state.pipeline = RAGPipeline()
-    time.sleep(0.5)
-    
-    # Bước 4: Building DB
-    with step_placeholder.container():
-        render_processing_state(current_step=4)
-    st.session_state.pipeline.add_documents(chunks)
-    time.sleep(0.5)
-    
-    # Chuyển trạng thái sang Chat hoạt động
-    st.session_state.app_state = "active_chat"
-    st.rerun()
-
-# TRẠNG THÁI 4: HỘI THOẠI ĐANG HOẠT ĐỘNG (ACTIVE CHAT STATE)
-elif st.session_state.app_state == "active_chat":
-    render_header(st.session_state.document_name, app_state="active_chat")
-    
     # Hiển thị lịch sử chat
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            if message["role"] == "user":
-                st.markdown(clean_html(f'<div class="user-message">{message["content"]}</div>'), unsafe_allow_html=True)
-            else:
-                st.markdown(clean_html(f"""
-                <div class="assistant-message">
-                    <div>{message["content"]}</div>
-                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(199, 196, 214, 0.3); font-size: 11px; color: var(--on-surface-variant);">
-                        <span class="material-symbols-outlined" style="font-size: 14px;">library_books</span> Answer generated from the uploaded document
-                    </div>
-                </div>
-                """), unsafe_allow_html=True)
-                
-    # Ô nhập câu hỏi
-    user_query = st.chat_input("Ask a question about the uploaded document...")
-    
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+            # TODO (Mạnh - Task 4.3): Render Citations nổi bật nếu role == "assistant"
+            if msg["role"] == "assistant" and msg.get("citations"):
+                with st.expander(f"📎 {len(msg['citations'])} trích dẫn nguồn"):
+                    for cite in msg["citations"]:
+                        st.markdown(
+                            f"- **{cite['file_name']}**, trang {cite['page']}"
+                            + (f" — *{cite['heading']}*" if cite.get("heading") else "")
+                        )
+
+    # Input câu hỏi
+    user_query = st.chat_input(f"Hỏi về tài liệu trong {workspace}...")
+
     if user_query:
-        # Lưu và hiển thị câu hỏi của user ngay lập tức
+        # Hiển thị câu hỏi
         st.session_state.chat_history.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
-            st.markdown(clean_html(f'<div class="user-message">{user_query}</div>'), unsafe_allow_html=True)
-            
-        # Gọi LLM sinh câu trả lời
+            st.markdown(user_query)
+
+        # Gọi API và hiển thị trả lời
         with st.chat_message("assistant"):
-            with st.spinner("Generating answer..."):
-                # 1. Tìm kiếm context liên quan từ ChromaDB
-                relevant_context = st.session_state.pipeline.retrieve(user_query)
-                context_str = "\n\n".join(relevant_context)
-                
-                # 2. Sinh câu trả lời từ LLM với context nhận được
-                answer = generate_answer(user_query, context_str)
-                
-            # Hiển thị câu trả lời của trợ lý
-            st.markdown(clean_html(f"""
-            <div class="assistant-message">
-                <div>{answer}</div>
-                <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(199, 196, 214, 0.3); font-size: 11px; color: var(--on-surface-variant);">
-                    <span class="material-symbols-outlined" style="font-size: 14px;">library_books</span> Answer generated from the uploaded document
-                </div>
-            </div>
-            """), unsafe_allow_html=True)
-            
-        # Lưu câu trả lời vào lịch sử và tải lại trang
-        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            with st.spinner("Đang tìm kiếm và sinh câu trả lời..."):
+                result = api_chat(user_query, workspace)
+
+            answer    = result.get("answer", "Lỗi: không nhận được câu trả lời từ API.")
+            citations = result.get("citations", [])
+
+            st.markdown(answer)
+
+            # TODO (Mạnh - Task 4.3): Style citations đẹp hơn
+            if citations:
+                with st.expander(f"📎 {len(citations)} trích dẫn nguồn"):
+                    for cite in citations:
+                        st.markdown(
+                            f"- **{cite['file_name']}**, trang {cite['page']}"
+                            + (f" — *{cite['heading']}*" if cite.get("heading") else "")
+                        )
+
+        # Lưu vào history
+        st.session_state.chat_history.append({
+            "role"     : "assistant",
+            "content"  : answer,
+            "citations": citations
+        })
         st.rerun()

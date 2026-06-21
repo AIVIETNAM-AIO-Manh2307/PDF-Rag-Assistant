@@ -1,5 +1,26 @@
-pypdf==4.2.0
-chromadb==0.5.0
-ollama==0.2.1
-streamlit==1.35.0
-pyyaml==6.0.1
+# ============================================================
+# PDF RAG Chatbot — requirements.txt
+# ============================================================
+
+# Core
+streamlit>=1.35.0
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+requests>=2.32.0
+pydantic>=2.7.0
+python-multipart>=0.0.9   # FastAPI file upload
+
+# PDF Processing (Thùy - Task 1.1)
+pypdf>=4.2.0
+PyMuPDF>=1.24.0           # fitz
+pdfplumber>=0.11.0
+
+# Vector Database (Phi - Task 2.1)
+chromadb>=0.5.0
+
+# LLM (Tiến - Task 3.x)
+ollama>=0.2.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
