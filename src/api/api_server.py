@@ -24,6 +24,7 @@ POST /api/explain             Giải thích thuật ngữ
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -44,6 +45,8 @@ from src.models.llm_generator import (
     summarize_doc,
     explain_term,
 )
+
+
 
 app = FastAPI(
     title="PDF RAG Chatbot API",
@@ -115,64 +118,41 @@ class UploadResponse(BaseModel):
 # =============================================================================
 # TASK 4.1 — ENDPOINT: Quản lý Workspace
 # =============================================================================
-
 @app.post("/api/workspaces", response_model=WorkspaceInfo, status_code=201)
 async def create_workspace(body: WorkspaceCreate):
-    """
-    Tạo một workspace mới (tạo collection trong ChromaDB).
-
-    Request body:
-        { "name": "Giải Tích" }
-
-    Response:
-        { "name": "Giải Tích", "file_count": 0 }
-    """
-    # TODO (Mạnh): Implement
-    # Gợi ý:
-    #   get_or_create_collection(body.name)  # từ retriever.py của Phi
-    #   return WorkspaceInfo(name=body.name, file_count=0)
-    raise NotImplementedError("POST /api/workspaces chưa được implement")
-
+    try:
+        # Giả định retriever có hàm get_or_create_collection
+        from src.pipeline.retriever import get_or_create_collection
+        get_or_create_collection(body.name)
+        return WorkspaceInfo(name=body.name, file_count=0)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi tạo workspace: {str(e)}")
 
 @app.get("/api/workspaces", response_model=List[WorkspaceInfo])
 async def get_workspaces():
-    """
-    Lấy danh sách tất cả workspace hiện có.
-
-    Response:
-        [
-            { "name": "Giải Tích", "file_count": 3 },
-            { "name": "CTDL",      "file_count": 1 }
-        ]
-    """
-    # TODO (Mạnh): Implement
-    # names = list_workspaces()
-    # return [WorkspaceInfo(name=n, file_count=len(list_files_in_workspace(n))) for n in names]
-    raise NotImplementedError("GET /api/workspaces chưa được implement")
-
+    try:
+        names = list_workspaces()
+        result = []
+        for n in names:
+            files = list_files_in_workspace(n)
+            result.append(WorkspaceInfo(name=n, file_count=len(files)))
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/workspaces/{workspace_name}", status_code=204)
 async def remove_workspace(workspace_name: str):
-    """
-    Xóa toàn bộ dữ liệu của một workspace.
-    """
-    # TODO (Mạnh): Implement
-    # delete_workspace(workspace_name)
-    raise NotImplementedError("DELETE /api/workspaces/{name} chưa được implement")
-
+    try:
+        delete_workspace(workspace_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/workspaces/{workspace_name}/files", response_model=List[str])
 async def get_workspace_files(workspace_name: str):
-    """
-    Lấy danh sách file PDF trong workspace.
-
-    Response:
-        ["giai_tich_c1.pdf", "giai_tich_c2.pdf"]
-    """
-    # TODO (Mạnh): Implement
-    # return list_files_in_workspace(workspace_name)
-    raise NotImplementedError("GET /api/workspaces/{name}/files chưa được implement")
-
+    try:
+        return list_files_in_workspace(workspace_name)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Không tìm thấy workspace")
 
 # =============================================================================
 # TASK 4.1 — ENDPOINT: Upload PDF
@@ -183,29 +163,37 @@ async def upload_pdf(
     file           : UploadFile = File(...),
     workspace_name : str        = "default"
 ):
-    """
-    Upload file PDF, xử lý (parse + chunk + embed), lưu vào workspace.
+    tmp_path = ""
+    try:
+        # 1. Lưu file tạm an toàn
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
 
-    Form data:
-        file           : file PDF
-        workspace_name : tên workspace đích
+        # 2. Extract & Chunking (Module Thùy)
+        chunks = process_pdf(tmp_path, workspace_name)
+        if not chunks:
+            raise ValueError("Không thể trích xuất nội dung từ PDF.")
 
-    Response:
-        {
-            "file_name"      : "giai_tich.pdf",
-            "workspace_name" : "Giải Tích",
-            "chunk_count"    : 87,
-            "page_count"     : 42,
-            "status"         : "success"
-        }
-    """
-    # TODO (Mạnh): Implement
-    # Gợi ý:
-    #   1. Lưu file tạm: tempfile.NamedTemporaryFile
-    #   2. chunks = process_pdf(tmp_path, workspace_name)   # Thùy
-    #   3. add_chunks_to_workspace(workspace_name, chunks)  # Phi
-    #   4. Trả về UploadResponse
-    raise NotImplementedError("POST /api/upload chưa được implement")
+        # 3. Vector Database (Module Phi)
+        add_chunks_to_workspace(workspace_name, chunks)
+
+        # 4. Tính toán metadata trả về
+        page_count = max([c["metadata"].get("page", 1) for c in chunks])
+        
+        return UploadResponse(
+            file_name=file.filename,
+            workspace_name=workspace_name,
+            chunk_count=len(chunks),
+            page_count=page_count,
+            status="success"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload lỗi: {str(e)}")
+    finally:
+        # Luôn dọn dẹp file rác
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 # =============================================================================
@@ -213,32 +201,14 @@ async def upload_pdf(
 # =============================================================================
 
 @app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
-    """
-    Nhận câu hỏi, tìm kiếm trong workspace, sinh câu trả lời có trích dẫn.
-
-    Request body:
-        {
-            "question"       : "Giới hạn là gì?",
-            "workspace_name" : "Giải Tích",
-            "top_k"          : 5
-        }
-
-    Response:
-        {
-            "answer"    : "Giới hạn của hàm số f(x) khi x tiến tới a ...",
-            "citations" : [
-                { "file_name": "giai_tich.pdf", "page": 5, "heading": "1.1", "snippet": "..." }
-            ],
-            "model"     : "vicuna:7b-v1.5-q5_1"
-        }
-    """
-    # TODO (Mạnh): Implement
-    # Gợi ý:
-    #   chunks = search_workspace(body.question, body.workspace_name, body.top_k)  # Phi
-    #   result = generate_cited_answer(body.question, chunks)                       # Tiến
-    #   return ChatResponse(**result)
-    raise NotImplementedError("POST /api/chat chưa được implement")
+    try:
+        chunks = search_workspace(body.question, body.workspace_name, body.top_k)
+        result = generate_cited_answer(body.question, chunks)
+        return ChatResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
@@ -247,21 +217,14 @@ async def chat(body: ChatRequest):
 
 @app.post("/api/summarize", response_model=SummarizeResponse)
 async def summarize(body: SummarizeRequest):
-    """
-    Tóm tắt nội dung một file hoặc toàn bộ workspace.
-
-    Request body:
-        {
-            "workspace_name" : "Giải Tích",
-            "file_name"      : "giai_tich_c1.pdf"   // null = tóm tắt cả workspace
-        }
-
-    Response:
-        { "summary": "Tài liệu trình bày về...", "model": "vicuna:7b..." }
-    """
-    # TODO (Mạnh): Implement
-    raise NotImplementedError("POST /api/summarize chưa được implement")
-
+    try:
+        # Lấy các chunk đại diện nhất (có thể tinh chỉnh query theo thuật toán của Phi)
+        query = f"Nội dung chính của file {body.file_name}" if body.file_name else "Tóm tắt toàn bộ tài liệu"
+        chunks = search_workspace(query, body.workspace_name, top_k=10)
+        result = summarize_doc(chunks)
+        return SummarizeResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
 # TASK 4.1 — ENDPOINT: Giải thích thuật ngữ
@@ -269,21 +232,12 @@ async def summarize(body: SummarizeRequest):
 
 @app.post("/api/explain", response_model=ExplainResponse)
 async def explain(body: ExplainRequest):
-    """
-    Giải thích một thuật ngữ kỹ thuật trong ngữ cảnh tài liệu.
-
-    Request body:
-        { "term": "Big-O notation", "workspace_name": "CTDL" }
-
-    Response:
-        {
-            "explanation" : "Big-O notation là ký hiệu dùng để...",
-            "citations"   : [...],
-            "model"       : "vicuna:7b..."
-        }
-    """
-    # TODO (Mạnh): Implement
-    raise NotImplementedError("POST /api/explain chưa được implement")
+    try:
+        chunks = search_workspace(body.term, body.workspace_name, top_k=3)
+        result = explain_term(body.term, chunks)
+        return ExplainResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================
@@ -294,3 +248,7 @@ async def explain(body: ExplainRequest):
 async def health_check():
     """Kiểm tra server có đang chạy không."""
     return {"status": "ok", "version": "2.0.0"}
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("frontend/index.html")
