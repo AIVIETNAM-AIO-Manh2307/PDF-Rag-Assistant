@@ -7,11 +7,13 @@ Chatbot hỏi đáp tài liệu học tập, hỗ trợ nhiều workspace, tríc
 ## Kiến trúc tổng quan
 
 ```
-Streamlit UI  ──(HTTP)──►  FastAPI Backend  ──►  ChromaDB (Persistent)
-                                │
-                                ├──► parser.py      (Thùy)
-                                ├──► retriever.py   (Phi)
-                                └──► llm_generator.py (Tiến)
+Browser (index.html)  ──(HTTP/REST)──►  FastAPI Backend  ──►  ChromaDB (Persistent)
+     │                                        │
+     │  Tự xử lý:                             ├──► parser.py       (Thùy)
+     ├─ Render UI (HTML/CSS/JS)               ├──► retriever.py    (Phi)
+     ├─ Quản lý state (JS variables)          └──► llm_generator.py (Tiến)
+     ├─ Upload PDF (FormData)
+     └─ Gọi API (fetch)
 ```
 
 ---
