@@ -38,6 +38,7 @@ Cấu trúc 1 citation:
 }
 """
 
+import ollama
 from typing import List, Dict, Any, Optional
 
 # Kiểu alias
