@@ -98,6 +98,27 @@ def generate_cited_answer(
     #   raw_answer = _call_ollama(prompt, model_name, temperature)
     #   citations  = _extract_citations(retrieved_chunks)
     #   return {"answer": raw_answer, "citations": citations, "model": model_name}
+    
+    """Sinh câu trả lời kèm trích dẫn cụ thể"""
+    context = _build_context(retrieved_chunks)
+    prompt = _build_cited_prompt(question, context)
+    
+    # Gọi Ollama
+    resp  = ollama.chat(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        options={"temperature": temperature}
+    )
+    raw_answer = resp["message"]["content"]
+    
+    # Lấy danh sách trích dẫn dựa trên những gì LLM thực tế đã dùng
+    citations = _extract_citations(retrieved_chunks, raw_answer)
+    
+    return {
+        "answer": raw_answer,
+        "citations": citations,
+        "model": model_name
+    }
     raise NotImplementedError("generate_cited_answer chưa được implement — Task của Tiến")
 
 
@@ -125,6 +146,37 @@ def summarize_doc(
         }
     """
     # TODO : Implement bằng prompt chuyên biệt cho tóm tắt
+        
+    """Tóm tắt nội dung chính của bộ dữ liệu văn bản được truyền vào"""
+    context =  _build_context(retrieved_chunks)
+    
+    prompt =  f"""Bạn là một chuyên gia phân tích dữ liệu. Hãy viết một bản tóm tắt ngắn gọn, 
+súc tích về nội dung cốt lõi của tài liệu dựa trên phần văn bản (Context) được cung cấp dưới đây.
+
+---
+VĂN BẢN (CONTEXT):
+{context}
+---
+
+YÊU CẦU:
+- Bản tóm tắt phải có bố cục rõ ràng (sử dụng dấu gạch đầu dòng nếu cần).
+- Tập trung vào các ý chính, định nghĩa quan trọng hoặc mục tiêu chính của tài liệu.
+- Độ dài khoảng 3-5 câu chất lượng.
+
+BẢN TÓM TẮT:"""
+
+    resp = ollama.chat(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        options={"temperature": 0.2} # Tăng độ mượt mà cho việc tóm tắt văn bản
+    )
+    
+    return {
+        "answer": resp["message"]["content"],
+        "citations": [],
+        "model": model_name
+    }
+    
     raise NotImplementedError("summarize_doc chưa được implement — Task của Tiến")
 
 
@@ -153,6 +205,40 @@ def explain_term(
         }
     """
     # TODO : Implement bằng prompt chuyên biệt cho giải thích thuật ngữ
+    """Giải thích chi tiết một thuật ngữ kỹ thuật/học thuật dựa trên ngữ cảnh tài liệu"""
+    context = _build_context(retrieved_chunks)
+    
+    prompt = f"""Bạn là một giảng viên đại học chuyên ngành. Hãy giải thích ý nghĩa của thuật ngữ dưới đây 
+dựa trên thông tin tìm thấy trong phần ngữ cảnh (Context).
+
+Thuật ngữ cần giải thích: "{term}"
+
+---
+NGỮ CẢNH (CONTEXT):
+{context}
+---
+
+YÊU CẦU:
+- Định nghĩa rõ ràng, dễ hiểu.
+- Nêu rõ ngữ cảnh hoặc ví dụ áp dụng thuật ngữ này nếu có nhắc tới trong tài liệu.
+- Trích dẫn nguồn dạng [Nguồn N] nếu có sử dụng thông tin cụ thể lấy ra từ ngữ cảnh.
+
+GIẢI THÍCH:"""
+
+    resp = ollama.chat(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+        options={"temperature": 0.0}
+    )
+    raw_answer = resp["message"]["content"]
+    citations = _extract_citations(retrieved_chunks, raw_answer)
+    
+    return {
+        "answer": raw_answer,
+        "citations": citations,
+        "model": model_name
+    }
+    
     raise NotImplementedError("explain_term chưa được implement — Task của Tiến")
 
 
@@ -177,6 +263,25 @@ def _build_context(
     """
     # TODO : Implement
     # Gợi ý: Ghép từ chunk có score cao nhất, dừng lại khi vượt max_chars
+    
+    """Ghép các chunks thành chuỗi ngữ cảnh được đánh số ID để LLM trích dẫn"""
+    context_parts = []
+    current_length = 0
+    
+    for idx, chunk in enumerate(retrieved_chunks):
+        # Định dạng nguồn 
+        chunk_text = f"[Nguồn {idx+1}]: File: {chunk['metadata']['file_name']}, Trang: {chunk['metadata']['page']}\n"
+        if chunk['metadata'].get('heading'):
+            chunk_text += f"Tiêu đề: {chunk['metadata']['heading']}\n"
+        chunk_text += f"Nội dung: {chunk['content']}\n\n"
+        
+        if current_length + len(chunk_text) > max_chars:
+            break
+        
+        context_parts.append(chunk_text)
+        current_length += len(chunk_text)
+        
+    return "".join(context_parts)
     raise NotImplementedError("_build_context chưa được implement")
 
 
@@ -193,10 +298,30 @@ def _build_cited_prompt(question: str, context: str) -> str:
     """
     # TODO : Implement
     # Gợi ý: Định dạng context kèm [File: xxx, Trang: N] vào prompt
+    
+    """Tạo prompt yêu cầu trả lời và trích dẫn"""
+    return f"""Bạn là một trợ lý hỏi đáp tài liệu học tập thông minh và trung thực.
+Hãy sử dụng các đoạn ngữ cảnh (Context) được cung cấp dưới đây để trả lời câu hỏi (Question).
+
+---
+NGỮ CẢNH (CONTEXT):
+{context}
+---
+
+CÂU HỎI (QUESTION):
+{question}
+
+---
+YÊU CẦU NGHIÊM NGẶT:
+1. Trả lời ngắn gọn, rõ ràng, đi thẳng vào vấn đề.
+2. Chỉ dựa vào thông tin có trong phần NGỮ CẢNH phía trên. Nếu ngữ cảnh không có thông tin, hãy nói thẳng là "Tôi không biết câu trả lời dựa trên tài liệu đã cung cấp", TUYỆT ĐỐI KHÔNG ĐƯỢC BỊA ĐẶT.
+3. KỸ THUẬT TRÍCH DẪN (CITATION): Với mỗi thông tin bạn lấy ra từ ngữ cảnh để viết câu trả lời, bạn BẮT BUỘC phải chèn ký hiệu tương ứng ở cuối câu đó, ví dụ: [Nguồn 1] hoặc [Nguồn 2]. Không tự chế ra số nguồn không tồn tại.
+
+TRẢ LỜI:"""
     raise NotImplementedError("_build_cited_prompt chưa được implement")
 
 
-def _extract_citations(retrieved_chunks: List[RetrievedChunk]) -> List[CitationDict]:
+def _extract_citations(retrieved_chunks: List[RetrievedChunk], raw_answer: str) -> List[CitationDict]:
     """
     (Private) Tạo danh sách citations từ metadata của các chunks đã dùng.
 
@@ -208,6 +333,41 @@ def _extract_citations(retrieved_chunks: List[RetrievedChunk]) -> List[CitationD
     """
     # TODO : Implement
     # Gợi ý: De-duplicate theo (file_name, page), lấy snippet ~100 ký tự đầu
+    
+    """Tìm các ký hiệu [Nguồn N] hoặc [N] trong câu trả lời mà không dùng thư viện re"""
+    citations = []
+    seen_indices = []
+    
+    # Cách 1: Duyệt qua danh sách tất cả các nguồn khả thi có trong retrieved_chunks
+    # Giả sử tối đa bạn truyền vào 4 chunks, idx sẽ chạy từ 0 đến 3 (Nguồn 1 đến Nguồn 4)
+    for idx in range(len(retrieved_chunks)):
+        source_number = idx + 1
+        
+        # Tạo ra các mẫu chuỗi mà LLM có thể viết
+        pattern_1 = f"[Nguồn {source_number}]"
+        pattern_2 = f"[{source_number}]"
+        
+        # Kiểm tra xem chuỗi mẫu này có xuất hiện trong câu trả lời của LLM hay không
+        if (pattern_1 in raw_answer) or (pattern_2 in raw_answer):
+            if idx not in seen_indices:
+                seen_indices.append(idx)
+                
+    # Sắp xếp lại seen_indices theo thứ tự xuất hiện thực tế trong văn bản (tùy chọn)
+    # Ở đây ta duyệt và đóng gói kết quả
+    for i in seen_indices:
+        chunk = retrieved_chunks[i]
+        snippet = chunk['content'][:100] + "..." if len(chunk['content']) > 100 else chunk['content']
+        
+        citation = {
+            "file_name": chunk['metadata']['file_name'],
+            "page": chunk['metadata']['page'],
+            "heading": chunk['metadata'].get('heading', ""),
+            "snippet": snippet
+        }
+        citations.append(citation)
+        
+    return citations
+
     raise NotImplementedError("_extract_citations chưa được implement")
 
 
@@ -223,6 +383,7 @@ def _count_tokens(text: str) -> int:
         int: Số token ước lượng
     """
     # TODO : Implement (có thể dùng len(text) // 4 trước, cải thiện sau)
+    return len(text) // 4
     raise NotImplementedError("_count_tokens chưa được implement")
 
 
