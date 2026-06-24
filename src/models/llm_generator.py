@@ -265,20 +265,25 @@ def _build_context(
     # TODO : Implement
     # Gợi ý: Ghép từ chunk có score cao nhất, dừng lại khi vượt max_chars
     
-    """Ghép các chunks thành chuỗi ngữ cảnh được đánh số ID để LLM trích dẫn"""
+    """
+    Xây dựng chuỗi ngữ cảnh. Mỗi chunk được đóng gói rõ ràng thành một khối độc lập
+    được đánh nhãn chuẩn dạng [Nguồn X] để LLM dễ nhận diện và trích dẫn ngược lại.
+    """
     context_parts = []
     current_length = 0
     
     for idx, chunk in enumerate(retrieved_chunks):
-        # Định dạng nguồn 
-        chunk_text = f"[Nguồn {idx+1}]: File: {chunk['metadata']['file_name']}, Trang: {chunk['metadata']['page']}\n"
-        if chunk['metadata'].get('heading'):
-            chunk_text += f"Tiêu đề: {chunk['metadata']['heading']}\n"
-        chunk_text += f"Nội dung: {chunk['content']}\n\n"
+        source_label = f"[Nguồn {idx + 1}]"
         
+        # Tạo cấu trúc khối thông tin tường minh
+        chunk_text = f"--- Khối Ngữ Cảnh {source_label} ---\n"
+        chunk_text += f"Nội dung: {chunk['content']}\n"
+        chunk_text += f"Nguồn file: {chunk['metadata']['file_name']}, Trang: {chunk['metadata']['page']}\n\n"
+        
+        # Kiểm tra giới hạn an toàn cho Context Window
         if current_length + len(chunk_text) > max_chars:
             break
-        
+            
         context_parts.append(chunk_text)
         current_length += len(chunk_text)
         
@@ -288,35 +293,42 @@ def _build_context(
 
 def _build_cited_prompt(question: str, context: str) -> str:
     """
-    (Private) Xây dựng prompt yêu cầu LLM trả lời và ghi rõ nguồn trích dẫn.
-
-    Args:
-        question (str): Câu hỏi
-        context  (str): Context đã được format với số trang
-
-    Returns:
-        str: Prompt hoàn chỉnh
+    Xây dựng prompt tối ưu cấu trúc, áp dụng phương pháp Few-shot Prompting
+    giúp ép khung hành vi sinh trích dẫn của LLM theo định dạng chuẩn xác.
     """
-    # TODO : Implement
-    # Gợi ý: Định dạng context kèm [File: xxx, Trang: N] vào prompt
-    
-    """Tạo prompt yêu cầu trả lời và trích dẫn"""
-    return f"""Bạn là một trợ lý hỏi đáp tài liệu học tập thông minh và trung thực.
-Hãy sử dụng các đoạn ngữ cảnh (Context) được cung cấp dưới đây để trả lời câu hỏi (Question).
+    return f"""Bạn là một trợ lý hỏi đáp tài liệu học tập thông minh, trung thực và luôn tuân thủ nguyên tắc trích dẫn nguồn một cách tuyệt đối.
+
+Nhiệm vụ của bạn: Hãy trả lời câu hỏi của người dùng dựa trên thông tin trong phần NGỮ CẢNH được cung cấp.
 
 ---
+HƯỚNG DẪN TRÍCH DẪN (QUAN TRỌNG):
+- Chỉ sử dụng các thông tin có trong phần NGỮ CẢNH bên dưới để trả lời. Không sử dụng kiến thức bên ngoài hay tự suy diễn.
+- Ngay sau mỗi câu hay mỗi ý khẳng định mà bạn lấy từ một khối ngữ cảnh nào đó, bạn BẮT BUỘC phải viết ký hiệu nguồn tương ứng dạng [Nguồn 1], [Nguồn 2],... ở ngay cuối câu đó trước dấu chấm.
+- Nếu câu trả lời kết hợp thông tin từ nhiều nguồn, hãy đặt các nhãn nguồn liên tiếp nhau, ví dụ: [Nguồn 1][Nguồn 2].
+
+VÍ DỤ MẪU:
+Ngữ cảnh:
+--- Khối Ngữ Cảnh [Nguồn 1] ---
+Nội dung: Mô hình YOLOv10 ra mắt năm 2024 bởi đại học Tsinghua...
+--- Khối Ngữ Cảnh [Nguồn 2] ---
+Nội dung: Kiến trúc cốt lõi sử dụng SCDown...
+Câu hỏi: YOLOv10 ra mắt khi nào và có kiến trúc gì mới?
+Trả lời: Mô hình YOLOv10 ra mắt năm 2024 [Nguồn 1]. Kiến trúc của nó sử dụng thành phần SCDown [Nguồn 2].
+
+---
+BẮT ĐẦU DỮ LIỆU THỰC TẾ:
+
 NGỮ CẢNH (CONTEXT):
 {context}
----
 
 CÂU HỎI (QUESTION):
 {question}
 
 ---
-YÊU CẦU NGHIÊM NGẶT:
-1. Trả lời ngắn gọn, rõ ràng, đi thẳng vào vấn đề.
-2. Chỉ dựa vào thông tin có trong phần NGỮ CẢNH phía trên. Nếu ngữ cảnh không có thông tin, hãy nói thẳng là "Tôi không biết câu trả lời dựa trên tài liệu đã cung cấp", TUYỆT ĐỐI KHÔNG ĐƯỢC BỊA ĐẶT.
-3. KỸ THUẬT TRÍCH DẪN (CITATION): Với mỗi thông tin bạn lấy ra từ ngữ cảnh để viết câu trả lời, bạn BẮT BUỘC phải chèn ký hiệu tương ứng ở cuối câu đó, ví dụ: [Nguồn 1] hoặc [Nguồn 2]. Không tự chế ra số nguồn không tồn tại.
+YÊU CẦU ĐẦU RA:
+- Câu trả lời viết bằng Tiếng Việt mượt mà, tự nhiên, ngắn gọn và đi thẳng vào trọng tâm nhưng không tự bịa nội dung.
+- Nếu có dùng thông tin từ khối ngữ cảnh để trả lời BẮT BUỘC phải Chèn chính xác các ký hiệu nhãn trích dẫn nguồn dạng [Nguồn X]. Giống với cấu trúc ví dụ mẫu.
+- Nếu tài liệu không chứa câu trả lời, hãy viết: "Tôi không biết câu trả lời dựa trên tài liệu đã cung cấp", tuyệt đối không bịa đặt nguồn.
 
 TRẢ LỜI:"""
     raise NotImplementedError("_build_cited_prompt chưa được implement")
