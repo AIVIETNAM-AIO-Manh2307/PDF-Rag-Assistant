@@ -107,7 +107,7 @@ def _extract_text_chunks(file_path: str, workspace_name: str) -> List[ChunkDict]
                     cur_chunk_text += block_text + '\n'
 
                     # limit chunk size 1000
-                    if len(cur_chunk_text) > 1000:
+                    if len(cur_chunk_text) > 5000:
                         chunks.append({
                             'content': cur_chunk_text.strip(),
                             'metadata':{

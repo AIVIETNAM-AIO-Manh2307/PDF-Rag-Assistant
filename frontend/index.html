@@ -6,16 +6,54 @@
   <title>PDF RAG Assistant</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ══════════════════════════════════════
+       DESIGN TOKENS — UNIFIED DARK THEME
+    ══════════════════════════════════════ */
+    :root {
+      /* Surfaces */
+      --bg-base:       #0d0d1a;   /* deepest bg */
+      --bg-sidebar:    #111122;   /* sidebar */
+      --bg-chat:       #13131f;   /* chat area */
+      --bg-panel:      #111122;   /* sources panel — same as sidebar */
+      --bg-elevated:   #1a1a2e;   /* cards, inputs */
+      --bg-hover:      #1f1f38;
+      --bg-active:     rgba(139,92,246,.18);
+
+      /* Borders */
+      --border:        rgba(255,255,255,0.07);
+      --border-accent: rgba(139,92,246,0.35);
+
+      /* Accent */
+      --accent:        #8b5cf6;
+      --accent-light:  #c4b5fd;
+      --accent-faint:  rgba(139,92,246,0.12);
+      --accent-glow:   rgba(139,92,246,0.08);
+
+      /* Text */
+      --text-primary:  #f0efff;
+      --text-secondary: rgba(255,255,255,0.55);
+      --text-muted:    rgba(255,255,255,0.28);
+
+      /* Status */
+      --green:  #22c55e;
+      --red:    #ef4444;
+
+      /* Radii & spacing */
+      --r-sm: 6px;
+      --r-md: 10px;
+      --r-lg: 14px;
+    }
 
     html, body {
       height: 100%; width: 100%;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 14px;
-      background: #fff;
-      color: #111;
+      background: var(--bg-base);
+      color: var(--text-primary);
       overflow: hidden;
     }
 
@@ -24,7 +62,7 @@
     ══════════════════════════════════════ */
     #app {
       display: grid;
-      grid-template-columns: 240px 1fr 268px;
+      grid-template-columns: 248px 1fr 272px;
       height: 100vh;
       width: 100vw;
       overflow: hidden;
@@ -34,147 +72,154 @@
        SIDEBAR
     ══════════════════════════════════════ */
     .rag-sidebar {
-      background: #15152a;
+      background: var(--bg-sidebar);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      border-right: 1px solid rgba(255,255,255,0.07);
+      border-right: 1px solid var(--border);
     }
 
+    /* Logo */
     .sb-logo {
-      padding: 16px 14px 13px;
-      display: flex; align-items: center; gap: 9px;
-      font-size: 13.5px; font-weight: 600; color: #fff;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 15px 14px 14px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13.5px; font-weight: 600; color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+      letter-spacing: -0.01em;
     }
     .sb-logo-icon {
-      width: 26px; height: 26px;
-      background: rgba(139,92,246,0.22);
-      border-radius: 7px;
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, rgba(139,92,246,0.35), rgba(139,92,246,0.15));
+      border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 14px;
+      font-size: 15px;
+      border: 1px solid var(--border-accent);
     }
 
+    /* Section label */
     .sb-section-label {
-      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-      color: rgba(255,255,255,0.28); text-transform: uppercase;
-      padding: 10px 14px 5px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.09em;
+      color: var(--text-muted); text-transform: uppercase;
+      padding: 12px 14px 5px;
       flex-shrink: 0;
     }
 
+    /* Workspace list */
     .ws-list {
       flex: 1;
       overflow-y: auto;
-      padding: 4px 8px;
+      padding: 3px 8px;
+      min-height: 0;
     }
     .ws-list::-webkit-scrollbar { width: 3px; }
-    .ws-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    .ws-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 
     .ws-item {
       display: flex; align-items: center; gap: 8px;
-      padding: 7px 10px; border-radius: 8px; cursor: pointer;
-      font-size: 12.5px; color: rgba(255,255,255,0.6);
+      padding: 7px 10px; border-radius: var(--r-md); cursor: pointer;
+      font-size: 12.5px; color: var(--text-secondary);
       transition: background 0.12s, color 0.12s;
       margin-bottom: 1px;
       user-select: none;
     }
-    .ws-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.9); }
-    .ws-item.active { background: rgba(139,92,246,0.2); color: #c4b5fd; }
+    .ws-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .ws-item.active { background: var(--bg-active); color: var(--accent-light); }
     .ws-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ws-item-count {
       font-size: 10px; padding: 1px 6px; border-radius: 10px;
-      background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.07); color: var(--text-muted);
       flex-shrink: 0;
     }
-    .ws-item.active .ws-item-count { background: rgba(139,92,246,0.22); color: #c4b5fd; }
-
-    .sb-divider {
-      border: none; border-top: 1px solid rgba(255,255,255,0.07);
-      margin: 6px 12px; flex-shrink: 0;
+    .ws-item.active .ws-item-count { background: rgba(139,92,246,0.22); color: var(--accent-light); }
+    .ws-empty-hint {
+      padding: 8px 12px;
+      font-size: 11.5px;
+      color: var(--text-muted);
     }
 
+    /* Divider */
+    .sb-divider {
+      border: none; border-top: 1px solid var(--border);
+      margin: 5px 12px; flex-shrink: 0;
+    }
+
+    /* Create workspace */
     .create-ws {
       padding: 5px 8px 6px;
       display: flex; gap: 5px;
       flex-shrink: 0;
     }
     .create-ws input {
-      flex: 1; background: rgba(255,255,255,0.07);
-      border: 1px solid rgba(255,255,255,0.1); border-radius: 7px;
-      padding: 6px 9px; font-size: 12px; color: #fff; outline: none;
+      flex: 1;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 6px 9px; font-size: 12px;
+      color: var(--text-primary); outline: none;
       font-family: inherit;
+      transition: border-color 0.15s;
     }
-    .create-ws input::placeholder { color: rgba(255,255,255,0.28); }
-    .create-ws input:focus { border-color: #8b5cf6; }
+    .create-ws input::placeholder { color: var(--text-muted); }
+    .create-ws input:focus { border-color: var(--accent); }
 
     .btn-new-ws {
-      background: rgba(139,92,246,0.18);
-      border: 1px solid rgba(139,92,246,0.35);
-      border-radius: 7px; color: #c4b5fd;
+      background: var(--accent-faint);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--r-sm); color: var(--accent-light);
       font-size: 18px; line-height: 1;
       width: 32px; cursor: pointer;
       transition: background 0.12s;
       flex-shrink: 0;
     }
-    .btn-new-ws:hover { background: rgba(139,92,246,0.32); }
+    .btn-new-ws:hover { background: rgba(139,92,246,0.28); }
 
+    /* Upload zone — sidebar only */
     .upload-zone {
-      margin: 5px 8px;
-      border: 1.5px dashed rgba(139,92,246,0.3);
-      border-radius: 9px; padding: 12px 8px;
+      margin: 4px 8px;
+      border: 1.5px dashed var(--border-accent);
+      border-radius: var(--r-md); padding: 12px 8px;
       text-align: center; cursor: pointer;
       transition: background 0.12s, border-color 0.12s;
       flex-shrink: 0;
     }
-    .upload-zone:hover { background: rgba(139,92,246,0.07); border-color: rgba(139,92,246,0.55); }
-    .upload-zone.dragover { background: rgba(139,92,246,0.12); border-color: #8b5cf6; }
-    .upload-zone .uz-icon { font-size: 20px; margin-bottom: 3px; }
-    .upload-zone p { font-size: 11px; color: rgba(255,255,255,0.32); line-height: 1.5; }
-    .upload-zone p span { color: #a78bfa; text-decoration: underline; }
+    .upload-zone:hover { background: var(--accent-glow); border-color: var(--accent); }
+    .upload-zone.dragover { background: rgba(139,92,246,0.14); border-color: var(--accent); }
+    .upload-zone .uz-icon { font-size: 18px; margin-bottom: 4px; }
+    .upload-zone p { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+    .upload-zone p span { color: var(--accent-light); text-decoration: underline; cursor: pointer; }
 
     /* Upload progress */
-    .upload-progress {
-      margin: 0 8px 2px;
-      display: none;
-      flex-shrink: 0;
-    }
+    .upload-progress { margin: 0 8px 2px; display: none; flex-shrink: 0; }
     .upload-progress.show { display: block; }
-    .progress-bar-wrap {
-      height: 4px; background: rgba(255,255,255,0.08);
-      border-radius: 4px; overflow: hidden; margin-bottom: 4px;
-    }
-    .progress-bar {
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, #8b5cf6, #c4b5fd);
-      border-radius: 4px;
-      transition: width 0.3s ease;
-    }
-    .progress-label {
-      font-size: 10.5px; color: rgba(255,255,255,0.35); text-align: center;
-    }
+    .progress-bar-wrap { height: 3px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+    .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-light)); border-radius: 4px; transition: width 0.3s ease; }
+    .progress-label { font-size: 10.5px; color: var(--text-muted); text-align: center; }
 
+    /* Toast */
     .upload-toast {
-      margin: 0 8px 5px;
-      padding: 6px 10px; border-radius: 7px;
-      font-size: 11.5px; background: rgba(139,92,246,0.14);
-      color: #c4b5fd; display: none;
-      flex-shrink: 0;
-      line-height: 1.4;
+      margin: 0 8px 4px;
+      padding: 6px 10px; border-radius: var(--r-sm);
+      font-size: 11.5px;
+      background: rgba(139,92,246,0.14);
+      color: var(--accent-light);
+      display: none; flex-shrink: 0; line-height: 1.4;
     }
     .upload-toast.show { display: block; }
     .upload-toast.error { background: rgba(220,60,60,0.12); color: #fca5a5; }
 
-    .sb-tools { padding: 6px 8px 10px; flex-shrink: 0; }
+    /* Sidebar bottom tools */
+    .sb-tools { padding: 5px 8px 10px; flex-shrink: 0; }
     .tool-btn {
       width: 100%; display: flex; align-items: center; gap: 8px;
-      padding: 7px 10px; border-radius: 8px; background: transparent;
-      border: none; color: rgba(255,255,255,0.45); font-size: 12.5px;
+      padding: 7px 10px; border-radius: var(--r-md);
+      background: transparent; border: none;
+      color: var(--text-muted); font-size: 12.5px;
       cursor: pointer; text-align: left;
       transition: background 0.12s, color 0.12s;
       font-family: inherit; margin-bottom: 1px;
     }
-    .tool-btn:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.82); }
+    .tool-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
     .tool-btn.danger:hover { background: rgba(220,60,60,0.1); color: #fca5a5; }
 
     /* ══════════════════════════════════════
@@ -182,53 +227,93 @@
     ══════════════════════════════════════ */
     .rag-chat {
       display: flex; flex-direction: column;
-      background: #fff; overflow: hidden;
+      background: var(--bg-chat);
+      overflow: hidden;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
     }
 
+    /* Topbar */
     .chat-topbar {
-      padding: 12px 20px;
-      border-bottom: 1px solid #f0edff;
+      padding: 11px 18px;
+      border-bottom: 1px solid var(--border);
       display: flex; align-items: center; gap: 10px;
       flex-shrink: 0;
+      background: var(--bg-chat);
     }
-    .chat-topbar-title { font-size: 13.5px; font-weight: 600; color: #111; }
+    .chat-topbar-title { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
     .ws-pill {
-      font-size: 11.5px; background: #f0edff; color: #6d28d9;
-      padding: 3px 11px; border-radius: 20px;
-      border: 1px solid #ddd6fe; font-weight: 500;
+      font-size: 11.5px;
+      background: var(--accent-faint);
+      color: var(--accent-light);
+      padding: 3px 10px; border-radius: 20px;
+      border: 1px solid var(--border-accent);
+      font-weight: 500;
     }
     .topbar-spacer { flex: 1; }
-    .api-status {
-      font-size: 10.5px; display: flex; align-items: center; gap: 4px;
-      color: rgba(0,0,0,0.3);
-    }
-    .api-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #d1d5db;
-      transition: background 0.3s;
-    }
-    .api-dot.ok { background: #22c55e; }
-    .api-dot.err { background: #ef4444; }
 
+    /* Summarize button in topbar */
+    .btn-summarize-top {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 5px 11px;
+      color: var(--text-secondary); font-size: 12px;
+      cursor: pointer; font-family: inherit;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .btn-summarize-top:hover {
+      background: var(--bg-hover);
+      color: var(--accent-light);
+      border-color: var(--border-accent);
+    }
+
+    .api-status { font-size: 10.5px; display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
+    .api-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.18); transition: background 0.3s; }
+    .api-dot.ok { background: var(--green); }
+    .api-dot.err { background: var(--red); }
+
+    /* Messages */
     .chat-msgs {
       flex: 1; overflow-y: auto; padding: 20px 22px;
-      display: flex; flex-direction: column; gap: 14px;
+      display: flex; flex-direction: column; gap: 16px;
     }
     .chat-msgs::-webkit-scrollbar { width: 4px; }
-    .chat-msgs::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
+    .chat-msgs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
 
-    /* welcome */
+    /* Welcome state */
     .welcome {
       display: flex; flex-direction: column; align-items: center;
-      justify-content: center; height: 100%; gap: 10px;
-      color: rgba(0,0,0,0.3); text-align: center;
+      justify-content: center; height: 100%; gap: 12px;
+      text-align: center;
     }
-    .welcome .w-icon { font-size: 40px; color: rgba(0,0,0,0.2); }
-    .welcome h2 { font-size: 16px; font-weight: 500; color: rgba(0,0,0,0.45); }
-    .welcome p { font-size: 12.5px; max-width: 260px; line-height: 1.6; }
+    .welcome .w-icon { font-size: 40px; opacity: 0.35; }
+    .welcome h2 { font-size: 16px; font-weight: 500; color: var(--text-secondary); }
+    .welcome p { font-size: 12.5px; max-width: 260px; line-height: 1.65; color: var(--text-muted); }
+    .welcome strong { color: var(--accent-light); }
 
-    /* message rows */
-    .msg { display: flex; gap: 9px; align-items: flex-start; }
+    /* Quick action chips on welcome screen */
+    .welcome-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      justify-content: center; margin-top: 4px; max-width: 320px;
+    }
+    .welcome-chip {
+      font-size: 11.5px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 5px 12px; border-radius: 20px; cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .welcome-chip:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-accent);
+      color: var(--accent-light);
+    }
+
+    /* Message rows */
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
     .msg.user { flex-direction: row-reverse; }
 
     .av {
@@ -236,185 +321,211 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 12px; font-weight: 600;
     }
-    .av.bot { background: #15152a; color: #a78bfa; font-size: 13px; }
-    .av.user { background: #f0edff; color: #6d28d9; }
+    .av.bot {
+      background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(139,92,246,0.1));
+      color: var(--accent-light); font-size: 13px;
+      border: 1px solid var(--border-accent);
+    }
+    .av.user { background: var(--bg-elevated); color: var(--accent-light); border: 1px solid var(--border); }
 
     .bub {
-      max-width: 76%; padding: 9px 13px; line-height: 1.65;
-      font-size: 13px; color: #111;
+      max-width: 76%; padding: 10px 14px; line-height: 1.7;
+      font-size: 13px; color: var(--text-primary);
     }
     .bub.bot {
-      background: #f8f7ff; border: 1px solid #ede9fe;
-      border-radius: 4px 14px 14px 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 3px 14px 14px 14px;
     }
     .bub.user {
-      background: #f0edff; border: 1px solid #ddd6fe;
-      border-radius: 14px 4px 14px 14px;
+      background: var(--bg-active);
+      border: 1px solid var(--border-accent);
+      border-radius: 14px 3px 14px 14px;
+      color: var(--accent-light);
     }
 
-    .cite-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+    /* Citation chips */
+    .cite-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
     .cite-chip {
-      font-size: 11px; background: #f5f3ff; color: #6d28d9;
-      border: 1px solid #ddd6fe; border-radius: 5px;
-      padding: 2px 8px; cursor: pointer; font-weight: 500;
+      font-size: 11px;
+      background: rgba(139,92,246,0.1);
+      color: var(--accent-light);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--r-sm);
+      padding: 2px 9px; cursor: pointer; font-weight: 500;
       transition: background 0.1s;
     }
-    .cite-chip:hover { background: #ede9fe; }
+    .cite-chip:hover { background: rgba(139,92,246,0.22); }
 
-    /* typing dots */
-    .typing { display: flex; gap: 4px; align-items: center; padding: 10px 13px; }
+    /* Typing dots */
+    .typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
     .typing span {
-      width: 7px; height: 7px; border-radius: 50%; background: #c4b5fd;
-      display: block; animation: tdot 1.2s infinite ease-in-out;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+      display: block; animation: tdot 1.2s infinite ease-in-out; opacity: 0.6;
     }
     .typing span:nth-child(2) { animation-delay: .2s; }
     .typing span:nth-child(3) { animation-delay: .4s; }
     @keyframes tdot {
-      0%, 60%, 100% { transform: translateY(0); }
-      30% { transform: translateY(-6px); }
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
+      30% { transform: translateY(-5px); opacity: 1; }
     }
 
-    /* explain bar */
-    .explain-bar {
-      flex-shrink: 0;
-      padding: 0 20px 10px;
-    }
-    .explain-inner {
-      display: flex; align-items: center; gap: 7px;
-      background: #f5f3ff; border: 1px solid #ddd6fe;
-      border-radius: 9px; padding: 7px 12px;
-    }
-    .explain-inner .ei-label { font-size: 12px; color: #7c3aed; white-space: nowrap; }
-    .explain-inner input {
-      flex: 1; background: transparent; border: none; outline: none;
-      font-size: 12.5px; color: #111; font-family: inherit;
-    }
-    .explain-inner input::placeholder { color: rgba(0,0,0,0.28); }
-    .btn-explain {
-      background: #15152a; border: none; border-radius: 7px;
-      padding: 4px 12px; color: #c4b5fd; font-size: 12px;
-      cursor: pointer; white-space: nowrap; font-family: inherit;
-    }
-    .btn-explain:hover { opacity: 0.85; }
-
-    /* chat input */
+    /* Chat input area */
     .chat-input-area {
       flex-shrink: 0;
-      padding: 10px 20px 14px;
-      border-top: 1px solid #f0edff;
+      padding: 12px 18px 15px;
+      background: var(--bg-chat);
     }
-    .chat-input-row {
-      display: flex; gap: 8px; align-items: flex-end;
-      background: #faf8ff; border: 1.5px solid #ddd6fe;
-      border-radius: 12px; padding: 9px 12px;
+    .chat-input-box {
+      display: flex; flex-direction: column;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 10px 12px 8px;
       transition: border-color .15s, box-shadow .15s;
     }
-    .chat-input-row:focus-within {
-      border-color: #8b5cf6;
-      box-shadow: 0 0 0 3px rgba(139,92,246,.1);
+    .chat-input-box:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(139,92,246,.08);
     }
-    .chat-input-row textarea {
-      flex: 1; background: transparent; border: none; outline: none;
-      font-size: 13px; color: #111; resize: none; font-family: inherit;
-      line-height: 1.5; max-height: 110px; min-height: 20px;
+    .chat-input-box textarea {
+      background: transparent; border: none; outline: none;
+      font-size: 13.5px; color: var(--text-primary); resize: none;
+      font-family: inherit; line-height: 1.55;
+      max-height: 120px; min-height: 22px;
+      margin-bottom: 6px;
     }
-    .chat-input-row textarea::placeholder { color: rgba(0,0,0,0.28); }
+    .chat-input-box textarea::placeholder { color: var(--text-muted); }
+    .input-actions {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .input-hint { font-size: 11px; color: var(--text-muted); }
     .btn-send {
-      background: #15152a; border: none; border-radius: 8px;
-      width: 32px; height: 32px; flex-shrink: 0;
+      background: var(--accent);
+      border: none; border-radius: var(--r-sm);
+      width: 30px; height: 30px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: opacity .15s;
+      cursor: pointer;
+      transition: opacity .15s, background .15s;
     }
-    .btn-send:hover { opacity: .8; }
-    .btn-send svg { width: 14px; height: 14px; fill: #a78bfa; }
+    .btn-send:hover { opacity: 0.85; }
+    .btn-send:disabled { background: rgba(139,92,246,0.25); cursor: not-allowed; }
+    .btn-send svg { width: 13px; height: 13px; fill: #fff; }
 
     /* ══════════════════════════════════════
        SOURCES PANEL
     ══════════════════════════════════════ */
     .rag-sources {
-      background: #fafafa;
-      border-left: 1px solid #ede9fe;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
       display: flex; flex-direction: column;
       overflow: hidden;
     }
+
     .src-header {
-      padding: 12px 14px;
-      border-bottom: 1px solid #ede9fe;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
       display: flex; align-items: center; gap: 6px;
       flex-shrink: 0;
     }
-    .src-header-title { font-size: 13px; font-weight: 600; color: #111; flex: 1; }
+    .src-header-title { font-size: 13px; font-weight: 600; color: var(--text-primary); flex: 1; }
     .src-file-badge {
-      font-size: 10.5px; background: #f0edff; color: #6d28d9;
-      padding: 2px 8px; border-radius: 10px; border: 1px solid #ddd6fe;
+      font-size: 10.5px;
+      background: var(--accent-faint);
+      color: var(--accent-light);
+      padding: 2px 8px; border-radius: 10px;
+      border: 1px solid var(--border-accent);
     }
 
+    /* File list */
     .src-list {
       flex: 1; overflow-y: auto; padding: 8px;
+      min-height: 0;
     }
     .src-list::-webkit-scrollbar { width: 3px; }
-    .src-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+    .src-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 3px; }
 
     .src-card {
-      padding: 9px 11px; border-radius: 8px; cursor: pointer;
+      padding: 9px 11px; border-radius: var(--r-md); cursor: pointer;
       border: 1px solid transparent; margin-bottom: 4px;
       transition: background .12s, border-color .12s;
     }
-    .src-card:hover { background: #f0edff; border-color: #ddd6fe; }
-    .src-card.active { background: #ede9fe; border-color: #8b5cf6; }
-
+    .src-card:hover { background: var(--bg-hover); border-color: var(--border); }
+    .src-card.active { background: var(--bg-active); border-color: var(--border-accent); }
     .src-card-name {
-      font-size: 12px; font-weight: 600; color: #111;
+      font-size: 12px; font-weight: 600; color: var(--text-primary);
       display: flex; align-items: center; gap: 5px; margin-bottom: 2px;
     }
-    .src-card-name .pdf-ico { color: #8b5cf6; font-size: 13px; }
-    .src-card-meta { font-size: 10.5px; color: rgba(0,0,0,0.38); }
+    .src-card-name .pdf-ico { color: var(--accent); font-size: 12px; }
+    .src-card-meta { font-size: 10.5px; color: var(--text-muted); }
     .src-snippet {
-      margin-top: 6px; font-size: 11px; color: #5b21b6; line-height: 1.55;
-      padding: 5px 8px; background: #f5f3ff;
-      border-left: 2px solid #c4b5fd; border-radius: 0 5px 5px 0;
+      margin-top: 7px; font-size: 11px; color: var(--accent-light); line-height: 1.55;
+      padding: 5px 9px; background: rgba(139,92,246,0.08);
+      border-left: 2px solid var(--accent); border-radius: 0 5px 5px 0;
       display: none;
     }
     .src-card.active .src-snippet { display: block; }
 
-    .src-upload-card {
-      margin: 4px 0;
-      border: 1.5px dashed rgba(139,92,246,.28); border-radius: 8px;
-      padding: 12px; text-align: center; cursor: pointer;
-      transition: background .12s;
+    /* Empty state in sources */
+    .src-empty {
+      text-align: center; padding: 24px 12px;
+      color: var(--text-muted); font-size: 12px; line-height: 1.7;
     }
-    .src-upload-card:hover { background: #f0edff; border-color: rgba(139,92,246,.55); }
-    .src-upload-card p { font-size: 11.5px; color: rgba(0,0,0,.35); margin-top: 3px; }
+    .src-empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
 
-    /* panel explain */
-    .panel-explain {
-      margin: 4px 8px 10px; padding: 10px 12px;
-      background: #f5f3ff; border-radius: 9px; border: 1px solid #ddd6fe;
+    /* ── TERM LOOKUP (panel bên phải, unified, gọn hơn) ── */
+    .panel-lookup {
       flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      padding: 10px 10px 12px;
     }
-    .pe-label { font-size: 11px; color: #7c3aed; font-weight: 600; margin-bottom: 6px; }
-    .pe-row { display: flex; gap: 5px; }
-    .pe-row input {
-      flex: 1; background: #fff; border: 1px solid #ddd6fe;
-      border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: #111;
-      outline: none; font-family: inherit;
+    .lookup-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.09em;
+      color: var(--text-muted); text-transform: uppercase;
+      margin-bottom: 7px; display: flex; align-items: center; gap: 5px;
     }
-    .pe-row input:focus { border-color: #8b5cf6; }
-    .btn-pe {
-      background: #15152a; border: none; border-radius: 6px;
-      padding: 5px 11px; color: #c4b5fd; font-size: 11.5px; cursor: pointer;
+    .lookup-row { display: flex; gap: 5px; }
+    .lookup-row input {
+      flex: 1;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 6px 9px; font-size: 12px;
+      color: var(--text-primary); outline: none;
       font-family: inherit;
+      transition: border-color 0.15s;
     }
-    .btn-pe:hover { opacity: 0.85; }
-    .pe-result {
-      margin-top: 7px; font-size: 11.5px; color: #111; line-height: 1.55;
-      padding: 6px 9px; background: #fff; border-radius: 6px;
-      border: 1px solid #ddd6fe; display: none;
+    .lookup-row input::placeholder { color: var(--text-muted); }
+    .lookup-row input:focus { border-color: var(--accent); }
+    .btn-lookup {
+      background: var(--accent-faint);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--r-sm);
+      padding: 6px 11px; color: var(--accent-light);
+      font-size: 11.5px; cursor: pointer;
+      font-family: inherit;
+      transition: background 0.12s;
+      white-space: nowrap;
     }
-    .pe-result.show { display: block; }
+    .btn-lookup:hover { background: rgba(139,92,246,0.28); }
+    .lookup-result {
+      margin-top: 8px; font-size: 11.5px; color: var(--text-primary);
+      line-height: 1.6;
+      padding: 7px 10px;
+      background: rgba(139,92,246,0.07);
+      border-radius: var(--r-sm);
+      border: 1px solid var(--border-accent);
+      display: none;
+    }
+    .lookup-result.show { display: block; }
 
     /* Hidden file input */
     #fileInput { display: none; }
+
+    /* Scrollbar global */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -440,6 +551,7 @@
 
     <hr class="sb-divider"/>
 
+    <!-- Upload — DUY NHẤT 1 chỗ -->
     <div class="upload-zone" id="btnUploadZone">
       <div class="uz-icon">☁️</div>
       <p>Kéo thả PDF vào đây<br/>hoặc <span>chọn file</span></p>
@@ -457,7 +569,6 @@
     <hr class="sb-divider"/>
 
     <div class="sb-tools">
-      <button class="tool-btn" id="btnSummarize">📝&nbsp; Tóm tắt tài liệu</button>
       <button class="tool-btn danger" id="btnClearChat">🗑️&nbsp; Xóa lịch sử chat</button>
     </div>
   </aside>
@@ -468,7 +579,11 @@
       <span class="chat-topbar-title">💬 Chat</span>
       <span class="ws-pill" id="wsPill">—</span>
       <span class="topbar-spacer"></span>
-      <span class="api-status">
+      <!-- Tóm tắt tài liệu chuyển lên topbar -->
+      <button class="btn-summarize-top" id="btnSummarize" title="Tóm tắt tài liệu đang chọn">
+        📝 Tóm tắt
+      </button>
+      <span class="api-status" style="margin-left:10px;">
         <span class="api-dot" id="apiDot"></span>
         <span id="apiLabel">API</span>
       </span>
@@ -476,20 +591,15 @@
 
     <div class="chat-msgs" id="chatMsgs"></div>
 
-    <div class="explain-bar">
-      <div class="explain-inner">
-        <span class="ei-label">🔍</span>
-        <input type="text" id="explainInput" placeholder="Tra thuật ngữ nhanh... (vd: gradient descent)"/>
-        <button class="btn-explain" id="btnExplain">Tra cứu</button>
-      </div>
-    </div>
-
     <div class="chat-input-area">
-      <div class="chat-input-row">
+      <div class="chat-input-box">
         <textarea id="chatInput" rows="1" placeholder="Chọn workspace trước..."></textarea>
-        <button class="btn-send" id="btnSend">
-          <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-        </button>
+        <div class="input-actions">
+          <span class="input-hint">Enter gửi · Shift+Enter xuống dòng</span>
+          <button class="btn-send" id="btnSend">
+            <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   </main>
@@ -500,14 +610,18 @@
       <span class="src-header-title">📄 Nguồn tài liệu</span>
       <span class="src-file-badge" id="srcBadge">0 file(s)</span>
     </div>
+
+    <!-- File list only — no duplicate upload here -->
     <div class="src-list" id="srcList"></div>
-    <div class="panel-explain">
-      <div class="pe-label">🔍 Tra thuật ngữ trong tài liệu</div>
-      <div class="pe-row">
-        <input type="text" id="peInput" placeholder="epsilon-delta, Big-O..."/>
-        <button class="btn-pe" id="btnPanelExplain">Tra</button>
+
+    <!-- Unified term lookup — chỉ còn 1 chỗ duy nhất -->
+    <div class="panel-lookup">
+      <div class="lookup-label">🔍 Tra thuật ngữ</div>
+      <div class="lookup-row">
+        <input type="text" id="peInput" placeholder="gradient descent, Big-O..."/>
+        <button class="btn-lookup" id="btnPanelExplain">Tra</button>
       </div>
-      <div class="pe-result" id="peResult"></div>
+      <div class="lookup-result" id="peResult"></div>
     </div>
   </aside>
 
@@ -515,7 +629,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  CONFIG — đổi URL nếu backend ở server khác
+//  CONFIG
 // ══════════════════════════════════════════════════════════════
 const API = 'http://localhost:8000';
 
@@ -541,29 +655,22 @@ let activeSrc   = -1;
 //  BIND EVENTS
 // ══════════════════════════════════════════════════════════════
 function bindEvents() {
-  // Sidebar buttons
   document.getElementById('btnCreateWs').addEventListener('click', createWs);
   document.getElementById('btnSummarize').addEventListener('click', doSummarize);
   document.getElementById('btnClearChat').addEventListener('click', doClearChat);
   document.getElementById('btnUploadZone').addEventListener('click', triggerUpload);
-
-  // Chat
   document.getElementById('btnSend').addEventListener('click', sendMsg);
-  document.getElementById('btnExplain').addEventListener('click', doExplain);
-
-  // Sources panel
   document.getElementById('btnPanelExplain').addEventListener('click', doPanelExplain);
 
-  // Keyboard
   document.getElementById('newWsInput').addEventListener('keydown', e => { if (e.key === 'Enter') createWs(); });
-  document.getElementById('explainInput').addEventListener('keydown', e => { if (e.key === 'Enter') doExplain(); });
   document.getElementById('peInput').addEventListener('keydown', e => { if (e.key === 'Enter') doPanelExplain(); });
 
   const ta = document.getElementById('chatInput');
   ta.addEventListener('input', () => autoH(ta));
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
 
-  // Event delegation — dynamic elements
   document.getElementById('wsList').addEventListener('click', e => {
     const item = e.target.closest('.ws-item');
     if (item) selectWs(item.dataset.wsName);
@@ -571,19 +678,15 @@ function bindEvents() {
   document.getElementById('srcList').addEventListener('click', e => {
     const card = e.target.closest('.src-card');
     if (card) toggleSrc(parseInt(card.dataset.srcIdx));
-    const up = e.target.closest('.src-upload-card');
-    if (up) triggerUpload();
   });
   document.getElementById('chatMsgs').addEventListener('click', e => {
     const chip = e.target.closest('.cite-chip');
     if (chip) highlightSrc(chip.dataset.fileName);
   });
 
-  // File input
   const fi = document.getElementById('fileInput');
   fi.addEventListener('change', () => uploadFiles(fi.files));
 
-  // Drag & drop trên upload zone
   const zone = document.getElementById('btnUploadZone');
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
@@ -595,32 +698,28 @@ function bindEvents() {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  API HEALTH CHECK
+//  API HEALTH
 // ══════════════════════════════════════════════════════════════
 async function checkApiHealth() {
   const dot   = document.getElementById('apiDot');
   const label = document.getElementById('apiLabel');
   try {
     const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
-    if (r.ok) {
-      dot.className = 'api-dot ok';
-      label.textContent = 'API online';
-    } else throw new Error();
+    if (r.ok) { dot.className = 'api-dot ok'; label.textContent = 'API online'; }
+    else throw new Error();
   } catch {
-    dot.className = 'api-dot err';
-    label.textContent = 'API offline';
+    dot.className = 'api-dot err'; label.textContent = 'API offline';
   }
 }
 
 // ══════════════════════════════════════════════════════════════
-//  WORKSPACE
+//  WORKSPACES
 // ══════════════════════════════════════════════════════════════
 async function loadWorkspaces() {
   try {
     const r = await fetch(`${API}/api/workspaces`);
     if (!r.ok) throw new Error();
     const raw = await r.json();
-    // Mỗi phần tử: { name, file_count } — enrich thêm files[]
     workspaces = await Promise.all(raw.map(async ws => {
       try {
         const fr = await fetch(`${API}/api/workspaces/${encodeURIComponent(ws.name)}/files`);
@@ -628,21 +727,15 @@ async function loadWorkspaces() {
         return { ...ws, files: files.map(f => typeof f === 'string' ? { name: f } : f) };
       } catch { return { ...ws, files: [] }; }
     }));
-  } catch {
-    workspaces = [];
-  }
+  } catch { workspaces = []; }
 }
 
-function renderAll() {
-  renderWsList();
-  renderChat();
-  renderSources();
-}
+function renderAll() { renderWsList(); renderChat(); renderSources(); }
 
 function renderWsList() {
   const el = document.getElementById('wsList');
   if (!workspaces.length) {
-    el.innerHTML = '<div style="padding:8px 12px;font-size:11.5px;color:rgba(255,255,255,.25)">Chưa có workspace nào</div>';
+    el.innerHTML = '<div class="ws-empty-hint">Chưa có workspace nào</div>';
     return;
   }
   el.innerHTML = workspaces.map(w => `
@@ -655,10 +748,7 @@ function renderWsList() {
 
 async function selectWs(name) {
   if (name === selectedWs) return;
-  selectedWs  = name;
-  chatHistory = [];
-  activeSrc   = -1;
-  // Reload files cho workspace này
+  selectedWs = name; chatHistory = []; activeSrc = -1;
   await reloadWsFiles(name);
   renderAll();
 }
@@ -671,11 +761,11 @@ async function reloadWsFiles(name) {
     const files = r.ok ? await r.json() : [];
     workspaces[idx].files = files.map(f => typeof f === 'string' ? { name: f } : f);
     workspaces[idx].file_count = files.length;
-  } catch { /* giữ nguyên */ }
+  } catch {}
 }
 
 async function createWs() {
-  const inp  = document.getElementById('newWsInput');
+  const inp = document.getElementById('newWsInput');
   const name = inp.value.trim();
   if (!name) return;
   inp.value = '';
@@ -687,21 +777,14 @@ async function createWs() {
     });
     if (r.status === 201 || r.ok) {
       await loadWorkspaces();
-      selectedWs  = name;
-      chatHistory = [];
-      activeSrc   = -1;
+      selectedWs = name; chatHistory = []; activeSrc = -1;
       renderAll();
       showToast(`✅ Đã tạo workspace "${name}"`, false);
-    } else {
-      showToast('❌ Không tạo được workspace', true);
-    }
+    } else { showToast('❌ Không tạo được workspace', true); }
   } catch { showToast('❌ Lỗi kết nối tới server', true); }
 }
 
-function doClearChat() {
-  chatHistory = [];
-  renderChat();
-}
+function doClearChat() { chatHistory = []; renderChat(); }
 
 // ══════════════════════════════════════════════════════════════
 //  UPLOAD PDF
@@ -718,21 +801,17 @@ async function uploadFiles(fileList) {
   const progress = document.getElementById('uploadProgress');
   const bar      = document.getElementById('progressBar');
   const lbl      = document.getElementById('progressLabel');
-
   let done = 0;
   const total = fileList.length;
 
-  progress.classList.add('show');
-  bar.style.width = '0%';
+  progress.classList.add('show'); bar.style.width = '0%';
 
   for (const file of fileList) {
-    lbl.textContent = `Đang upload: ${file.name} (${done + 1}/${total})...`;
+    lbl.textContent = `Upload: ${file.name} (${done + 1}/${total})...`;
     bar.style.width = `${Math.round((done / total) * 90)}%`;
-
     const fd = new FormData();
     fd.append('file', file);
     fd.append('workspace_name', selectedWs);
-
     try {
       const r   = await fetch(`${API}/api/upload`, { method: 'POST', body: fd });
       const res = await r.json();
@@ -742,31 +821,16 @@ async function uploadFiles(fileList) {
       } else {
         showToast(`❌ ${file.name}: ${res.detail || res.message || 'Upload thất bại'}`, true);
       }
-    } catch (e) {
-      showToast(`❌ ${file.name}: Lỗi kết nối`, true);
-    }
+    } catch { showToast(`❌ ${file.name}: Lỗi kết nối`, true); }
   }
 
   bar.style.width = '100%';
   lbl.textContent = `Hoàn thành ${done}/${total} file`;
   setTimeout(() => progress.classList.remove('show'), 2000);
-
-  // Reset input
   document.getElementById('fileInput').value = '';
 
-  // Reload workspace để cập nhật file list
   await reloadWsFiles(selectedWs);
-  renderWsList();
-  renderSources();
-}
-
-// ══════════════════════════════════════════════════════════════
-//  TOPBAR PILL
-// ══════════════════════════════════════════════════════════════
-function updatePill() {
-  document.getElementById('wsPill').textContent = selectedWs || '—';
-  document.getElementById('chatInput').placeholder =
-    selectedWs ? `Hỏi về tài liệu trong ${selectedWs}...` : 'Chọn workspace trước...';
+  renderWsList(); renderSources();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -778,10 +842,14 @@ function renderSources() {
   const files = ws?.files || [];
   document.getElementById('srcBadge').textContent = `${files.length} file(s)`;
 
-  const list    = document.getElementById('srcList');
-  const upCard  = `<div class="src-upload-card"><p>☁️ Click để upload PDF vào workspace này</p></div>`;
-
-  if (!files.length) { list.innerHTML = upCard; return; }
+  const list = document.getElementById('srcList');
+  if (!files.length) {
+    list.innerHTML = `<div class="src-empty">
+      <div class="src-empty-icon">📂</div>
+      <div>Chưa có tài liệu nào.<br/>Upload PDF ở sidebar để bắt đầu.</div>
+    </div>`;
+    return;
+  }
 
   list.innerHTML = files.map((f, i) => {
     const name = f.name || f;
@@ -790,21 +858,17 @@ function renderSources() {
       <div class="src-card-meta">${f.page_count ? f.page_count + ' trang · ' : ''}${f.chunk_count ? f.chunk_count + ' chunks' : ''}</div>
       <div class="src-snippet">${f.snippet || 'Nhấn để xem trích đoạn liên quan.'}</div>
     </div>`;
-  }).join('') + upCard;
+  }).join('');
 }
 
-function toggleSrc(i) {
-  activeSrc = activeSrc === i ? -1 : i;
-  renderSources();
-}
+function toggleSrc(i) { activeSrc = activeSrc === i ? -1 : i; renderSources(); }
 
 function highlightSrc(fileName) {
   const ws    = workspaces.find(w => w.name === selectedWs);
   const files = ws?.files || [];
   const i     = files.findIndex(f => (f.name || f) === fileName);
   if (i >= 0) {
-    activeSrc = i;
-    renderSources();
+    activeSrc = i; renderSources();
     document.getElementById(`sc${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
@@ -812,6 +876,13 @@ function highlightSrc(fileName) {
 // ══════════════════════════════════════════════════════════════
 //  CHAT
 // ══════════════════════════════════════════════════════════════
+const SAMPLE_QUESTIONS = [
+  '📌 Tóm tắt nội dung chính',
+  '❓ Giải thích khái niệm quan trọng',
+  '📊 So sánh các phương pháp',
+  '🔍 Tra cứu ví dụ minh họa',
+];
+
 function renderChat() {
   updatePill();
   const el = document.getElementById('chatMsgs');
@@ -824,13 +895,23 @@ function renderChat() {
   }
   if (!chatHistory.length) {
     el.innerHTML = `<div class="welcome">
-      <div class="w-icon" style="font-size:36px;color:rgba(0,0,0,.15)">💬</div>
-      <h2>Workspace: ${esc(selectedWs)}</h2>
-      <p>Upload PDF vào sidebar rồi đặt câu hỏi về nội dung tài liệu bên dưới.</p>
+      <div class="w-icon" style="font-size:38px">💬</div>
+      <h2>${esc(selectedWs)}</h2>
+      <p>Upload PDF, sau đó đặt câu hỏi về nội dung tài liệu.</p>
+      <div class="welcome-chips">
+        ${SAMPLE_QUESTIONS.map(q => `<div class="welcome-chip" onclick="prefillQ('${q.replace(/'/g,"\\'")}')"> ${q}</div>`).join('')}
+      </div>
     </div>`; return;
   }
   el.innerHTML = chatHistory.map(msgHTML).join('');
   el.scrollTop = el.scrollHeight;
+}
+
+function prefillQ(q) {
+  const ta = document.getElementById('chatInput');
+  ta.value = q;
+  ta.focus();
+  autoH(ta);
 }
 
 function msgHTML(m) {
@@ -842,7 +923,7 @@ function msgHTML(m) {
         `<span class="cite-chip" data-file-name="${esc(c.file_name)}">
           📄 ${esc(c.file_name)} · Tr.${c.page}${c.heading ? ' · ' + esc(c.heading) : ''}
         </span>`).join('')}</div>` : '';
-  const body = `<div style="display:flex;flex-direction:column;gap:4px;max-width:76%">${bub}${chips}</div>`;
+  const body = `<div style="display:flex;flex-direction:column;gap:5px;max-width:76%">${bub}${chips}</div>`;
   return `<div class="msg ${isUser ? 'user' : ''}">${isUser ? body + av : av + body}</div>`;
 }
 
@@ -869,11 +950,11 @@ async function sendMsg() {
       body: JSON.stringify({ question: q, workspace_name: selectedWs, top_k: 5 })
     });
     const d = await r.json(); rmTyping();
-    chatHistory.push({
-      role: 'assistant',
-      content: d.answer || 'Không nhận được câu trả lời.',
-      citations: d.citations || []
-    });
+    if (!r.ok) {
+      chatHistory.push({ role: 'assistant', content: `❌ Lỗi Server: ${d.detail || 'Không rõ nguyên nhân'}`, citations: [] });
+    } else {
+      chatHistory.push({ role: 'assistant', content: d.answer || 'Không nhận được câu trả lời.', citations: d.citations || [] });
+    }
   } catch (e) {
     rmTyping();
     chatHistory.push({ role: 'assistant', content: `❌ Lỗi kết nối: ${e.message}`, citations: [] });
@@ -904,36 +985,14 @@ async function doSummarize() {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  EXPLAIN (inline)
-// ══════════════════════════════════════════════════════════════
-async function doExplain() {
-  const term = document.getElementById('explainInput').value.trim();
-  if (!term || !selectedWs) { showToast('⚠️ Nhập thuật ngữ và chọn workspace!', true); return; }
-  document.getElementById('explainInput').value = '';
-  addTyping();
-  try {
-    const r = await fetch(`${API}/api/explain`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ term, workspace_name: selectedWs })
-    });
-    const d = await r.json(); rmTyping();
-    chatHistory.push({
-      role: 'assistant',
-      content: `🔍 <strong>${esc(term)}:</strong> ${d.explanation || 'Không tìm thấy.'}`,
-      citations: d.citations || []
-    });
-    renderChat();
-  } catch (e) { rmTyping(); showToast('Lỗi: ' + e.message, true); }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  EXPLAIN (sources panel)
+//  TERM LOOKUP (sources panel — duy nhất)
 // ══════════════════════════════════════════════════════════════
 async function doPanelExplain() {
   const term = document.getElementById('peInput').value.trim();
   const res  = document.getElementById('peResult');
-  if (!term || !selectedWs) return;
+  if (!term || !selectedWs) {
+    showToast('⚠️ Nhập thuật ngữ và chọn workspace!', true); return;
+  }
   res.textContent = 'Đang tra cứu...'; res.classList.add('show');
   try {
     const r = await fetch(`${API}/api/explain`, {
@@ -959,6 +1018,15 @@ function showToast(msg, isError = false, ms = 5000) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  TOPBAR PILL
+// ══════════════════════════════════════════════════════════════
+function updatePill() {
+  document.getElementById('wsPill').textContent = selectedWs || '—';
+  document.getElementById('chatInput').placeholder =
+    selectedWs ? `Hỏi về tài liệu trong "${selectedWs}"...` : 'Chọn workspace trước...';
+}
+
+// ══════════════════════════════════════════════════════════════
 //  UTILS
 // ══════════════════════════════════════════════════════════════
 function esc(s) {
@@ -972,8 +1040,9 @@ function esc(s) {
 
 function autoH(el) {
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 </script>
 </body>
 </html>
+

@@ -1,37 +1,11 @@
-"""
-=============================================================================
-MODULE: api_server.py
-TASKS : 4.1 Dựng Backend FastAPI (các REST endpoint)
-        4.2 Tái cấu trúc Streamlit — chỉ gọi API, không có logic xử lý
-        4.3 Nâng cấp giao diện (Workspace sidebar, Citations highlight)
-=============================================================================
-
-API CONTRACT
-Chạy server:
-    uvicorn src.api.api_server:app --reload --port 8000
-
-Base URL: http://localhost:8000
-
-=== ENDPOINT SUMMARY ===
-POST /api/workspaces          Tạo workspace mới
-GET  /api/workspaces          Lấy danh sách workspace
-DELETE /api/workspaces/{name} Xóa workspace
-POST /api/upload              Upload và xử lý PDF vào workspace
-GET  /api/workspaces/{name}/files  Danh sách file trong workspace
-POST /api/chat                Hỏi đáp trong workspace
-POST /api/summarize           Tóm tắt tài liệu
-POST /api/explain             Giải thích thuật ngữ
-"""
-
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile,Form, File, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import tempfile, os
 
-# Import các module của các thành viên khác
-# (sẽ hoạt động sau khi từng người implement xong)
+
 from src.data.parser        import process_pdf
 from src.pipeline.retriever import (
     search_workspace,
@@ -39,6 +13,7 @@ from src.pipeline.retriever import (
     delete_workspace,
     list_workspaces,
     list_files_in_workspace,
+    get_first_chunks
 )
 from src.models.llm_generator import (
     generate_cited_answer,
@@ -53,8 +28,10 @@ app = FastAPI(
     description="Backend API cho chatbot hỏi đáp tài liệu học tập",
     version="2.0.0"
 )
+import logging
+import traceback
+logging.basicConfig(level=logging.DEBUG)
 
-# Cho phép Streamlit frontend gọi API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -161,7 +138,7 @@ async def get_workspace_files(workspace_name: str):
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_pdf(
     file           : UploadFile = File(...),
-    workspace_name : str        = "default"
+    workspace_name : str        = Form(...)   # <--- BẮT BUỘC ĐỔI THÀNH Form(...)
 ):
     tmp_path = ""
     try:
@@ -175,6 +152,15 @@ async def upload_pdf(
         if not chunks:
             raise ValueError("Không thể trích xuất nội dung từ PDF.")
 
+        # --- FIX LỖI TÊN FILE RÁC ---
+        # Vì parser đọc file từ thư mục tạm nên tên file bị biến thành tmp_xxx.pdf
+        # Ta cần ép lại tên gốc của file trước khi lưu vào ChromaDB
+        real_filename = file.filename
+        for c in chunks:
+            if "metadata" in c:
+                c["metadata"]["file_name"] = real_filename
+        # -----------------------------
+
         # 3. Vector Database (Module Phi)
         add_chunks_to_workspace(workspace_name, chunks)
 
@@ -182,7 +168,7 @@ async def upload_pdf(
         page_count = max([c["metadata"].get("page", 1) for c in chunks])
         
         return UploadResponse(
-            file_name=file.filename,
+            file_name=real_filename,
             workspace_name=workspace_name,
             chunk_count=len(chunks),
             page_count=page_count,
@@ -201,7 +187,6 @@ async def upload_pdf(
 # =============================================================================
 
 @app.post("/api/chat", response_model=ChatResponse)
-@app.post("/api/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
     try:
         chunks = search_workspace(body.question, body.workspace_name, body.top_k)
@@ -218,12 +203,12 @@ async def chat(body: ChatRequest):
 @app.post("/api/summarize", response_model=SummarizeResponse)
 async def summarize(body: SummarizeRequest):
     try:
-        # Lấy các chunk đại diện nhất (có thể tinh chỉnh query theo thuật toán của Phi)
         query = f"Nội dung chính của file {body.file_name}" if body.file_name else "Tóm tắt toàn bộ tài liệu"
         chunks = search_workspace(query, body.workspace_name, top_k=10)
         result = summarize_doc(chunks)
         return SummarizeResponse(**result)
     except Exception as e:
+        traceback.print_exc()   
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
@@ -235,10 +220,17 @@ async def explain(body: ExplainRequest):
     try:
         chunks = search_workspace(body.term, body.workspace_name, top_k=3)
         result = explain_term(body.term, chunks)
-        return ExplainResponse(**result)
+        
+        # SỬA LỖI 500: Lấy giá trị từ key "answer" gán vào "explanation"
+        return ExplainResponse(
+            explanation=result.get("answer", "Không có nội dung"),
+            citations=result.get("citations", []),
+            model=result.get("model", "unknown")
+        )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # =============================================================================
 # HEALTH CHECK
