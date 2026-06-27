@@ -1,10 +1,52 @@
+"""
+=============================================================================
+MODULE: retriever.py
+TASKS : 2.1 Nâng cấp Vector DB sang PersistentClient
+        2.2 Xây dựng Workspaces (lọc theo metadata)
+        2.3 Thuật toán Cross Analysis (nhiều file cùng workspace)
+        2.4 [Optional] Hybrid Search (BM25 + Vector)
+=============================================================================
+
+API CONTRACT - Các hàm được định nghĩa ở đây là "giao kèo" với các module khác.
+Tên hàm, tham số, và kiểu trả về KHÔNG ĐƯỢC THAY ĐỔI.
+Chỉ viết code bên trong phần thân hàm.
+
+Kiểu dữ liệu đầu vào (ChunkDict) — nhận từ parser.py của Thùy:
+{
+    "content" : str,
+    "metadata": {
+        "file_name"      : str,
+        "page"           : int,
+        "workspace_name" : str,
+        "chunk_type"     : str,   # "text" | "table" | "heading"
+        "heading"        : str,
+    }
+}
+
+Kiểu dữ liệu đầu ra (RetrievedChunk) — trả cho llm_generator.py của Tiến:
+{
+    "content" : str,
+    "metadata": {
+        "file_name"      : str,
+        "page"           : int,
+        "workspace_name" : str,
+        "chunk_type"     : str,
+        "heading"        : str,
+    },
+    "score"   : float    # Điểm similarity (0.0 - 1.0), cao hơn = liên quan hơn
+}
+"""
+
 from typing import List, Dict, Any, Optional
 
+# Kiểu alias
 ChunkDict     = Dict[str, Any]
 RetrievedChunk = Dict[str, Any]
 
+# Đường dẫn lưu ChromaDB xuống ổ cứng (thay đổi nếu cần)
 CHROMA_PERSIST_DIR = "./chroma_db"
 
+# --- Singleton ChromaDB client ---
 _chroma_client = None
 
 
@@ -383,39 +425,7 @@ def hybrid_search(
 
     return sorted(reranked, key=lambda chunk: chunk["score"], reverse=True)[:top_k]
 
-# =============================================================================
-# TASK 2.5 — Lấy phần đầu tài liệu (Dành riêng cho chức năng Tóm tắt)
-# =============================================================================
 
-def get_first_chunks(workspace_name: str, limit: int = 15) -> List[RetrievedChunk]:
-    """
-    Kéo thẳng các chunk đầu tiên của tài liệu (Mục lục, Lời mở đầu) 
-    bằng cách sắp xếp theo số trang từ nhỏ đến lớn.
-    """
-    try:
-        collection = _get_collection(workspace_name)
-        # Lấy toàn bộ dữ liệu, không qua nhúng Vector
-        result = collection.get(include=["documents", "metadatas"])
-        
-        documents = result.get("documents") or []
-        metadatas = result.get("metadatas") or []
-        
-        chunks = [
-            {
-                "content": doc,
-                "metadata": meta or {},
-                "score": 1.0  # Không cần tính điểm
-            }
-            for doc, meta in zip(documents, metadatas)
-        ]
-        
-        # Sắp xếp thứ tự các đoạn văn theo số trang (từ trang 1 trở đi)
-        chunks.sort(key=lambda c: c["metadata"].get("page", 9999))
-        
-        # Trả về 15 đoạn đầu tiên (đủ bao trọn Mục lục và Lời mở đầu)
-        return chunks[:limit]
-    except Exception:
-        return []
 # =============================================================================
 # BACKWARD COMPATIBILITY — Giữ lại class cũ để không break code hiện tại
 # =============================================================================
