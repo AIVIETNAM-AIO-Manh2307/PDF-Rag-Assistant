@@ -1,60 +1,52 @@
 """
-=============================================================================
-MODULE: api_server.py
-TASKS : 4.1 Dựng Backend FastAPI (các REST endpoint)
-        4.2 Tái cấu trúc Streamlit — chỉ gọi API, không có logic xử lý
-        4.3 Nâng cấp giao diện (Workspace sidebar, Citations highlight)
-=============================================================================
-
-API CONTRACT
-Chạy server:
-    uvicorn src.api.api_server:app --reload --port 8000
-
-Base URL: http://localhost:8000
-
-=== ENDPOINT SUMMARY ===
-POST /api/workspaces          Tạo workspace mới
-GET  /api/workspaces          Lấy danh sách workspace
-DELETE /api/workspaces/{name} Xóa workspace
-POST /api/upload              Upload và xử lý PDF vào workspace
-GET  /api/workspaces/{name}/files  Danh sách file trong workspace
-POST /api/chat                Hỏi đáp trong workspace
-POST /api/summarize           Tóm tắt tài liệu
-POST /api/explain             Giải thích thuật ngữ
+api_server.py  —  PDF RAG Chatbot  v3.0
+Tính năng mới:
+  1. Google OAuth2 (đăng nhập / đăng xuất)
+  2. Chat History lưu theo user (JSON file, giống ChatGPT sidebar)
+  3. Agentic Web Search  POST /api/chat/web
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, UploadFile, Form, File, HTTPException, Request, Depends
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-import tempfile, os
+import tempfile, os, json, uuid
+from datetime import datetime
+from pathlib import Path
 
-# Import các module của các thành viên khác
-# (sẽ hoạt động sau khi từng người implement xong)
+# ── OAuth2 ──────────────────────────────────────────────────────────────────
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from starlette.middleware.sessions import SessionMiddleware
+
+# ── Pipeline ────────────────────────────────────────────────────────────────
 from src.data.parser        import process_pdf
 from src.pipeline.retriever import (
-    search_workspace,
-    add_chunks_to_workspace,
-    delete_workspace,
-    list_workspaces,
-    list_files_in_workspace,
+    search_workspace, add_chunks_to_workspace,
+    delete_workspace, list_workspaces,
+    list_files_in_workspace, get_or_create_collection
 )
 from src.models.llm_generator import (
-    generate_cited_answer,
-    summarize_doc,
-    explain_term,
+    generate_cited_answer, summarize_doc, explain_term,
+    generate_web_search_answer           # ← hàm mới (xem llm_generator.py)
 )
 
+import logging, traceback
+logging.basicConfig(level=logging.DEBUG)
 
-
+# ════════════════════════════════════════════════════════════════════════════
+# APP + MIDDLEWARE
+# ════════════════════════════════════════════════════════════════════════════
 app = FastAPI(
     title="PDF RAG Chatbot API",
-    description="Backend API cho chatbot hỏi đáp tài liệu học tập",
-    version="2.0.0"
+    description="Backend API cho chatbot hỏi đáp tài liệu học tập – v3.0",
+    version="3.0.0"
 )
 
-# Cho phép Streamlit frontend gọi API
+# ⚠️ Thay bằng SECRET_KEY ngẫu nhiên thật sự khi deploy
+SECRET_KEY = os.getenv("SESSION_SECRET", "change-me-to-a-random-secret-32chars")
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,13 +54,220 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ════════════════════════════════════════════════════════════════════════════
+# GOOGLE OAUTH2
+# Cần set trong .env:
+#   GOOGLE_CLIENT_ID=...
+#   GOOGLE_CLIENT_SECRET=...
+#   FRONTEND_URL=http://localhost:8000   (redirect về sau login)
+# ════════════════════════════════════════════════════════════════════════════
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 
-# =============================================================================
-# PYDANTIC SCHEMAS — Request & Response bodies
-# =============================================================================
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8000")
+
+
+def _current_user(request: Request) -> Optional[dict]:
+    """Trả về thông tin user từ session, hoặc None nếu chưa đăng nhập."""
+    return request.session.get("user")
+
+
+# ── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.get("/auth/login")
+async def login(request: Request):
+    """Redirect tới trang đăng nhập Google."""
+    redirect_uri = request.url_for("auth_callback")
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/callback", name="auth_callback")
+async def auth_callback(request: Request):
+    """Google redirect về đây sau khi user đăng nhập thành công."""
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except OAuthError as e:
+        raise HTTPException(status_code=400, detail=f"OAuth error: {str(e)}")
+
+    user_info = token.get("userinfo")
+    if not user_info:
+        raise HTTPException(status_code=400, detail="Không lấy được thông tin user")
+
+    request.session["user"] = {
+        "sub":     user_info["sub"],           # Google unique ID
+        "email":   user_info["email"],
+        "name":    user_info.get("name", ""),
+        "picture": user_info.get("picture", ""),
+    }
+    return RedirectResponse(url=FRONTEND_URL)
+
+
+@app.get("/auth/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url=FRONTEND_URL)
+
+
+@app.get("/auth/me")
+async def me(request: Request):
+    """Trả về thông tin user hiện tại (hoặc null nếu chưa đăng nhập)."""
+    user = _current_user(request)
+    return {"user": user}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHAT HISTORY  (lưu file JSON theo user_id)
+# Cấu trúc thư mục:  ./chat_history/<user_sub>/<session_id>.json
+# ════════════════════════════════════════════════════════════════════════════
+HISTORY_ROOT = Path(os.getenv("CHAT_HISTORY_DIR", "./chat_history"))
+HISTORY_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _user_dir(user_sub: str) -> Path:
+    d = HISTORY_ROOT / user_sub
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _session_path(user_sub: str, session_id: str) -> Path:
+    return _user_dir(user_sub) / f"{session_id}.json"
+
+
+# ── Pydantic schemas cho Chat History ───────────────────────────────────────
+
+class HistoryMessage(BaseModel):
+    role: str        # "user" | "assistant"
+    content: str
+    citations: Optional[List[dict]] = []
+    timestamp: Optional[str] = None
+
+
+class ChatSession(BaseModel):
+    session_id: str
+    title: str
+    workspace_name: str
+    created_at: str
+    updated_at: str
+    messages: List[HistoryMessage] = []
+
+
+class SessionCreate(BaseModel):
+    workspace_name: str
+    title: Optional[str] = "Cuộc hội thoại mới"
+
+
+class SaveMessagesRequest(BaseModel):
+    session_id: str
+    messages: List[HistoryMessage]
+    title: Optional[str] = None   # cập nhật tiêu đề nếu truyền
+
+
+# ── Endpoints Chat History ───────────────────────────────────────────────────
+
+@app.get("/api/history/sessions", response_model=List[dict])
+async def list_sessions(request: Request):
+    """Liệt kê tất cả chat session của user hiện tại."""
+    user = _current_user(request)
+    if not user:
+        return []   # chưa đăng nhập → trả list rỗng (không lỗi)
+
+    d = _user_dir(user["sub"])
+    sessions = []
+    for f in sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            sessions.append({
+                "session_id":     data["session_id"],
+                "title":          data.get("title", "Cuộc hội thoại"),
+                "workspace_name": data.get("workspace_name", ""),
+                "created_at":     data.get("created_at", ""),
+                "updated_at":     data.get("updated_at", ""),
+                "message_count":  len(data.get("messages", [])),
+            })
+        except Exception:
+            pass
+    return sessions
+
+
+@app.post("/api/history/sessions", response_model=ChatSession, status_code=201)
+async def create_session(body: SessionCreate, request: Request):
+    """Tạo một chat session mới."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập")
+
+    now = datetime.utcnow().isoformat()
+    session = ChatSession(
+        session_id=uuid.uuid4().hex,
+        title=body.title or "Cuộc hội thoại mới",
+        workspace_name=body.workspace_name,
+        created_at=now,
+        updated_at=now,
+        messages=[],
+    )
+    _session_path(user["sub"], session.session_id).write_text(
+        session.model_dump_json(indent=2), encoding="utf-8"
+    )
+    return session
+
+
+@app.get("/api/history/sessions/{session_id}", response_model=ChatSession)
+async def get_session(session_id: str, request: Request):
+    """Lấy toàn bộ messages của một session."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập")
+
+    p = _session_path(user["sub"], session_id)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Session không tồn tại")
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+@app.put("/api/history/sessions/{session_id}")
+async def save_session(session_id: str, body: SaveMessagesRequest, request: Request):
+    """Cập nhật messages (và tuỳ chọn title) cho một session."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập")
+
+    p = _session_path(user["sub"], session_id)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Session không tồn tại")
+
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["messages"] = [m.model_dump() for m in body.messages]
+    data["updated_at"] = datetime.utcnow().isoformat()
+    if body.title:
+        data["title"] = body.title
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"status": "ok"}
+
+
+@app.delete("/api/history/sessions/{session_id}", status_code=204)
+async def delete_session(session_id: str, request: Request):
+    """Xóa một chat session."""
+    user = _current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập")
+
+    p = _session_path(user["sub"], session_id)
+    if p.exists():
+        p.unlink()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PYDANTIC SCHEMAS — giữ lại từ v2
+# ════════════════════════════════════════════════════════════════════════════
 
 class WorkspaceCreate(BaseModel):
-    name: str          # Tên workspace, vd: "Giải Tích"
+    name: str
 
 class WorkspaceInfo(BaseModel):
     name: str
@@ -79,66 +278,74 @@ class ChatRequest(BaseModel):
     workspace_name: str
     top_k: int = 5
 
+class WebChatRequest(BaseModel):
+    question: str
+    workspace_name: str
+    top_k: int = 5
+
 class Citation(BaseModel):
-    file_name : str
-    page      : int
-    heading   : str
-    snippet   : str
+    file_name: str
+    page: int
+    heading: str
+    snippet: str
 
 class ChatResponse(BaseModel):
-    answer    : str
-    citations : List[Citation]
-    model     : str
+    answer: str
+    citations: List[Citation]
+    model: str
+
+class WebChatResponse(BaseModel):
+    answer: str
+    citations: List[Citation]
+    web_results: List[dict]   # kết quả web thô để frontend hiển thị
+    model: str
 
 class SummarizeRequest(BaseModel):
-    workspace_name : str
-    file_name      : Optional[str] = None   # None = tóm tắt toàn workspace
+    workspace_name: str
+    file_name: Optional[str] = None
 
 class SummarizeResponse(BaseModel):
-    summary : str
-    model   : str
+    summary: str
+    model: str
 
 class ExplainRequest(BaseModel):
-    term           : str
-    workspace_name : str
+    term: str
+    workspace_name: str
 
 class ExplainResponse(BaseModel):
-    explanation : str
-    citations   : List[Citation]
-    model       : str
+    explanation: str
+    citations: List[Citation]
+    model: str
 
 class UploadResponse(BaseModel):
-    file_name      : str
-    workspace_name : str
-    chunk_count    : int
-    page_count     : int
-    status         : str   # "success" | "error"
+    file_name: str
+    workspace_name: str
+    chunk_count: int
+    page_count: int
+    status: str
 
 
-# =============================================================================
-# TASK 4.1 — ENDPOINT: Quản lý Workspace
-# =============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+# WORKSPACE ENDPOINTS (giữ nguyên từ v2)
+# ════════════════════════════════════════════════════════════════════════════
+
 @app.post("/api/workspaces", response_model=WorkspaceInfo, status_code=201)
 async def create_workspace(body: WorkspaceCreate):
     try:
-        # Giả định retriever có hàm get_or_create_collection
-        from src.pipeline.retriever import get_or_create_collection
         get_or_create_collection(body.name)
         return WorkspaceInfo(name=body.name, file_count=0)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi tạo workspace: {str(e)}")
 
+
 @app.get("/api/workspaces", response_model=List[WorkspaceInfo])
 async def get_workspaces():
     try:
         names = list_workspaces()
-        result = []
-        for n in names:
-            files = list_files_in_workspace(n)
-            result.append(WorkspaceInfo(name=n, file_count=len(files)))
-        return result
+        return [WorkspaceInfo(name=n, file_count=len(list_files_in_workspace(n))) for n in names]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.delete("/api/workspaces/{workspace_name}", status_code=204)
 async def remove_workspace(workspace_name: str):
@@ -147,6 +354,7 @@ async def remove_workspace(workspace_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/workspaces/{workspace_name}/files", response_model=List[str])
 async def get_workspace_files(workspace_name: str):
     try:
@@ -154,35 +362,36 @@ async def get_workspace_files(workspace_name: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail="Không tìm thấy workspace")
 
-# =============================================================================
-# TASK 4.1 — ENDPOINT: Upload PDF
-# =============================================================================
+
+# ════════════════════════════════════════════════════════════════════════════
+# UPLOAD PDF (giữ nguyên từ v2)
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/upload", response_model=UploadResponse)
 async def upload_pdf(
-    file           : UploadFile = File(...),
-    workspace_name : str        = "default"
+    file: UploadFile = File(...),
+    workspace_name: str = Form(...)
 ):
     tmp_path = ""
     try:
-        # 1. Lưu file tạm an toàn
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        # 2. Extract & Chunking (Module Thùy)
         chunks = process_pdf(tmp_path, workspace_name)
         if not chunks:
             raise ValueError("Không thể trích xuất nội dung từ PDF.")
 
-        # 3. Vector Database (Module Phi)
-        add_chunks_to_workspace(workspace_name, chunks)
+        real_filename = file.filename
+        for c in chunks:
+            if "metadata" in c:
+                c["metadata"]["file_name"] = real_filename
 
-        # 4. Tính toán metadata trả về
+        add_chunks_to_workspace(workspace_name, chunks)
         page_count = max([c["metadata"].get("page", 1) for c in chunks])
-        
+
         return UploadResponse(
-            file_name=file.filename,
+            file_name=real_filename,
             workspace_name=workspace_name,
             chunk_count=len(chunks),
             page_count=page_count,
@@ -191,16 +400,14 @@ async def upload_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload lỗi: {str(e)}")
     finally:
-        # Luôn dọn dẹp file rác
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
 
-# =============================================================================
-# TASK 4.1 — ENDPOINT: Chat
-# =============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+# CHAT — RAG thuần tài liệu (giữ nguyên)
+# ════════════════════════════════════════════════════════════════════════════
 
-@app.post("/api/chat", response_model=ChatResponse)
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
     try:
@@ -211,43 +418,74 @@ async def chat(body: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =============================================================================
-# TASK 4.1 — ENDPOINT: Tóm tắt
-# =============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+# CHAT — Agentic Web Search  (MỚI)
+# Kết hợp RAG tài liệu + tìm kiếm web bằng Google Custom Search API
+# ════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/chat/web", response_model=WebChatResponse)
+async def chat_web(body: WebChatRequest):
+    """
+    Agentic RAG: tìm trong tài liệu + search web, tổng hợp thành câu trả lời duy nhất.
+    Cần set trong .env:
+        GOOGLE_SEARCH_API_KEY=...
+        GOOGLE_SEARCH_CX=...         (Custom Search Engine ID)
+    """
+    try:
+        # 1. Lấy chunks từ tài liệu (vẫn dùng RAG)
+        doc_chunks = []
+        try:
+            doc_chunks = search_workspace(body.question, body.workspace_name, body.top_k)
+        except Exception:
+            pass  # workspace có thể rỗng, không sao
+
+        # 2. Gọi hàm tổng hợp web + tài liệu
+        result = await generate_web_search_answer(body.question, doc_chunks)
+        return WebChatResponse(**result)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SUMMARIZE & EXPLAIN (giữ nguyên từ v2)
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/summarize", response_model=SummarizeResponse)
 async def summarize(body: SummarizeRequest):
     try:
-        # Lấy các chunk đại diện nhất (có thể tinh chỉnh query theo thuật toán của Phi)
         query = f"Nội dung chính của file {body.file_name}" if body.file_name else "Tóm tắt toàn bộ tài liệu"
         chunks = search_workspace(query, body.workspace_name, top_k=10)
         result = summarize_doc(chunks)
         return SummarizeResponse(**result)
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# =============================================================================
-# TASK 4.1 — ENDPOINT: Giải thích thuật ngữ
-# =============================================================================
 
 @app.post("/api/explain", response_model=ExplainResponse)
 async def explain(body: ExplainRequest):
     try:
         chunks = search_workspace(body.term, body.workspace_name, top_k=3)
         result = explain_term(body.term, chunks)
-        return ExplainResponse(**result)
+        return ExplainResponse(
+            explanation=result.get("answer", "Không có nội dung"),
+            citations=result.get("citations", []),
+            model=result.get("model", "unknown")
+        )
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =============================================================================
-# HEALTH CHECK
-# =============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+# HEALTH + STATIC
+# ════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health")
 async def health_check():
-    """Kiểm tra server có đang chạy không."""
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "3.0.0"}
+
 
 @app.get("/")
 async def serve_frontend():
